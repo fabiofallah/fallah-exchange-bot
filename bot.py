@@ -1,36 +1,36 @@
 import os
 from flask import Flask, request
-import requests
+from telegram import Bot, Update
+from telegram.ext import Dispatcher, CommandHandler
+from telegram.ext import CallbackContext
 
-TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
+TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+bot = Bot(token=TOKEN)
 
 app = Flask(__name__)
 
-# Função para enviar mensagem
-def send_message(chat_id, text):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
-    requests.post(url, json=payload)
+@app.route('/')
+def home():
+    return 'Fallah Exchange Bot ONLINE'
 
-# Rota principal do webhook
-@app.route("/", methods=["POST"])
+@app.route('/webhook', methods=['POST'])
 def webhook():
-    data = request.get_json()
+    update = Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
+    return 'OK'
 
-    if "message" in data and "text" in data["message"]:
-        chat_id = data["message"]["chat"]["id"]
-        text = data["message"]["text"]
+def start(update: Update, context: CallbackContext):
+    update.message.reply_text("✅ Robô Fallah Exchange PRO online e configurado com sucesso.")
 
-        if text == "/start":
-            send_message(chat_id, "🤖 Bot Fallah Exchange & Bets PRO está online e funcionando!")
-        elif text == "/ping":
-            send_message(chat_id, "🏓 Pong! O bot está ativo.")
-        else:
-            send_message(chat_id, f"Você enviou: {text}")
+def ping(update: Update, context: CallbackContext):
+    update.message.reply_text("✅ Pong! O robô está online.")
 
-    return {"ok": True}
+from telegram.ext import Updater
+updater = Updater(token=TOKEN, use_context=True)
+dispatcher = updater.dispatcher
+dispatcher.add_handler(CommandHandler('start', start))
+dispatcher.add_handler(CommandHandler('ping', ping))
 
-# Início do servidor Flask
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+if __name__ == '__main__':
+    PORT = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=PORT)
