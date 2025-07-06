@@ -1,35 +1,42 @@
 import os
 from flask import Flask, request
-from telegram import Bot, Update
-from telegram.ext import Dispatcher, CommandHandler
+from telegram import Update, Bot
+from telegram.ext import ApplicationBuilder, CommandHandler
 
 # Variáveis de ambiente
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 
-# Instâncias
-bot = Bot(token=TOKEN)
 app = Flask(__name__)
+bot_app = ApplicationBuilder().token(TOKEN).build()
 
-# Dispatcher com handlers
-dispatcher = Dispatcher(bot=bot, update_queue=None, workers=0)
-dispatcher.add_handler(CommandHandler("start", lambda update, context: update.message.reply_text("✅ Bot Fallah Exchange & Bets PRÓ está online e pronto para enviar suas entradas!")))
-dispatcher.add_handler(CommandHandler("ping", lambda update, context: update.message.reply_text("✅ Pong! Bot ativo no Railway.")))
+# Comandos
+async def start(update: Update, context):
+    await update.message.reply_text("✅ Bot Fallah Exchange & Bets PRÓ está online e pronto!")
 
-# Rota para processar o webhook
+async def ping(update: Update, context):
+    await update.message.reply_text("✅ Pong! Bot ativo no Railway.")
+
+# Adiciona handlers
+bot_app.add_handler(CommandHandler("start", start))
+bot_app.add_handler(CommandHandler("ping", ping))
+
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    dispatcher.process_update(update)
+    update = Update.de_json(request.get_json(force=True), bot_app.bot)
+    bot_app.update_queue.put_nowait(update)
     return "ok", 200
 
-# Rota para configurar o webhook
 @app.route("/", methods=["GET"])
-def set_webhook():
-    bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
-    return f"✅ Webhook configurado em {WEBHOOK_URL}/{TOKEN}", 200
+async def set_webhook():
+    webhook_url = f"{WEBHOOK_URL}/{TOKEN}"
+    await bot_app.bot.set_webhook(webhook_url)
+    return f"✅ Webhook configurado em {webhook_url}", 200
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    bot_app.run_webhook(listen="0.0.0.0",
+                        port=int(os.environ.get("PORT", 5000)),
+                        webhook_url=f"{WEBHOOK_URL}/{TOKEN}")
+
 
 
