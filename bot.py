@@ -1,42 +1,34 @@
 import os
 from flask import Flask, request
-from telegram import Update, Bot
-from telegram.ext import ApplicationBuilder, CommandHandler
+from telegram import Bot, Update
+from telegram.ext import CommandHandler, Dispatcher
 
-# Variáveis de ambiente
-TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
+TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 
 app = Flask(__name__)
-bot_app = ApplicationBuilder().token(TOKEN).build()
+bot = Bot(token=TOKEN)
+dispatcher = Dispatcher(bot=bot, update_queue=None, workers=4, use_context=True)
 
 # Comandos
-async def start(update: Update, context):
-    await update.message.reply_text("✅ Bot Fallah Exchange & Bets PRÓ está online e pronto!")
 
-async def ping(update: Update, context):
-    await update.message.reply_text("✅ Pong! Bot ativo no Railway.")
+def start(update: Update, context):
+    update.message.reply_text('✅ Bot Fallah Exchange & Bets PRÓ está online e pronto para enviar suas entradas!')
 
-# Adiciona handlers
-bot_app.add_handler(CommandHandler("start", start))
-bot_app.add_handler(CommandHandler("ping", ping))
+def ping(update: Update, context):
+    update.message.reply_text('✅ Pong! Bot online e operacional.')
 
-@app.route(f"/{TOKEN}", methods=["POST"])
+dispatcher.add_handler(CommandHandler('start', start))
+dispatcher.add_handler(CommandHandler('ping', ping))
+
+@app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), bot_app.bot)
-    bot_app.update_queue.put_nowait(update)
-    return "ok", 200
+    update = Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
+    return 'ok'
 
-@app.route("/", methods=["GET"])
-async def set_webhook():
-    webhook_url = f"{WEBHOOK_URL}/{TOKEN}"
-    await bot_app.bot.set_webhook(webhook_url)
-    return f"✅ Webhook configurado em {webhook_url}", 200
-
-if __name__ == "__main__":
-    bot_app.run_webhook(listen="0.0.0.0",
-                        port=int(os.environ.get("PORT", 5000)),
-                        webhook_url=f"{WEBHOOK_URL}/{TOKEN}")
-
-
-
+if __name__ == '__main__':
+    # Configuração do webhook automático no Railway
+    bot.delete_webhook()
+    bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
