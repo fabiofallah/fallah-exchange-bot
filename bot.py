@@ -5,16 +5,14 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # Configuração de log
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 
-# Token do Railway
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 
-# Verificação
 if not TOKEN:
-    logging.error("🚨 TELEGRAM_BOT_TOKEN não encontrado nas variáveis de ambiente.")
+    logging.error("❌ TELEGRAM_BOT_TOKEN não encontrado nas variáveis de ambiente.")
     exit(1)
 
 # Comando /start
@@ -25,10 +23,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Bot está online no Railway!")
 
-# Iniciar o bot no Railway corretamente
-if __name__ == '__main__':
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("ping", ping))
+def main():
+    application = ApplicationBuilder().token(TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("ping", ping))
 
-    app.run_polling()
+    application.run_polling()
+
+if __name__ == "__main__":
+    main()
