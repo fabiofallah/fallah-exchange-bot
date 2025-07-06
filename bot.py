@@ -1,36 +1,33 @@
-from flask import Flask, request
-from telegram import Bot, Update
-from telegram.ext import Application, CommandHandler
-import asyncio
 import os
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from dotenv import load_dotenv
 
-TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-bot = Bot(token=TOKEN)
+load_dotenv()
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-app = Flask(__name__)
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ Robô Fallah Exchange & Bets PRO ativo e funcionando!")
 
-# Configuração da aplicação do bot
-application = Application.builder().token(TOKEN).build()
+async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🏓 Pong! Estou online.")
 
-# Comando /start
-async def start(update, context):
-    await update.message.reply_text("✅ Robô Fallah Exchange & Bets PRO está online e funcionando!")
+if __name__ == '__main__':
+    app = ApplicationBuilder().token(TOKEN).build()
 
-application.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("ping", ping))
 
-# Rota do webhook
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    asyncio.run(application.process_update(update))
-    return "OK", 200
+    # Modo webhook se desejar (descomente abaixo e ajuste o URL se quiser)
+    # PORT = int(os.environ.get('PORT', 8443))
+    # WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+    # app.run_webhook(
+    #     listen="0.0.0.0",
+    #     port=PORT,
+    #     webhook_url=f"{WEBHOOK_URL}/bot{TOKEN}"
+    # )
 
-# Rota de verificação
-@app.route("/", methods=["GET"])
-def index():
-    return "✅ Robô Fallah Exchange & Bets PRO ativo!", 200
+    # Modo polling (estável para Railway enquanto não fixarmos domínio fixo SSL)
+    app.run_polling()
 
-if __name__ == "__main__":
-    PORT = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=PORT)
 
