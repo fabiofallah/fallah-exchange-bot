@@ -1,7 +1,13 @@
 import os
 import logging
+import asyncio
+import nest_asyncio
+
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+
+# Ajuste para evitar conflito de loop no Railway
+nest_asyncio.apply()
 
 # Configuração de log
 logging.basicConfig(
@@ -9,22 +15,18 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# Pega o token de forma segura
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 
 if not TOKEN:
     logging.error("❌ TELEGRAM_BOT_TOKEN não encontrado nas variáveis de ambiente.")
     exit(1)
 
-# Comando /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Bot Fallah Exchange & Bets PRÓ está ativo e pronto para receber suas entradas!")
+    await update.message.reply_text("✅ Robô Fallah Exchange PRO está ativo e funcionando no Railway!")
 
-# Comando /ping
 async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Bot online e funcional no Railway!")
+    await update.message.reply_text("✅ Bot está online e respondendo corretamente!")
 
-# Main assíncrono
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
@@ -34,5 +36,5 @@ async def main():
     await app.run_polling()
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
+
