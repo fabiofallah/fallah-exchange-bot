@@ -1,27 +1,40 @@
-import asyncio
 import os
+import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-# Função de resposta ao comando /start
+# Configuração de logging para rastrear atividades no Railway
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# Lê o token de ambiente corretamente
+telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+if not telegram_bot_token:
+    logger.error("TELEGRAM_BOT_TOKEN não encontrado nas variáveis de ambiente.")
+    exit(1)
+
+# Comando /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('Fallah Exchange Bot ativo e funcionando!')
+    await update.message.reply_text("🤖 Robô Fallah Exchange PRO ativo e pronto para operar!")
 
-# Função principal
+# Comando /help
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Envie /start para confirmar que o bot está online e pronto.")
+
+# Função principal de inicialização do bot
 async def main():
-    telegram_token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    if telegram_token is None:
-        print("Erro: TELEGRAM_BOT_TOKEN não encontrado nas variáveis de ambiente.")
-        return
+    application = Application.builder().token(telegram_bot_token).build()
 
-    application = Application.builder().token(telegram_token).build()
-
-    # Adiciona o handler para o comando /start
+    # Adiciona comandos ao bot
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
 
-    # Inicia o bot
+    # Inicia o bot em polling
     await application.run_polling()
 
-# Executa o bot corretamente ao iniciar
-if __name__ == '__main__':
+if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
