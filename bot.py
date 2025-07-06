@@ -1,23 +1,29 @@
 import os
-import time
 import logging
-from telegram import Bot, Update
+from telegram import Update, Bot
 from telegram.ext import Updater, CommandHandler, CallbackContext
 
 # Configuração de log simples
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# Pega o token do Railway (variável TELEGRAM_BOT_TOKEN já configurada)
+# Pega o token do Railway de forma segura
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+
+# Verificação de token para debug
+if not TOKEN:
+    logging.error("🚨 TELEGRAM_BOT_TOKEN não encontrado nas variáveis de ambiente.")
+    exit(1)
+
+# Instancia o bot
 bot = Bot(token=TOKEN)
 
 # Comando /start
 def start(update: Update, context: CallbackContext):
-    update.message.reply_text("✅ Olá, você está conectado ao Fallah Exchange & Bets PRÓ 🚀. Aguarde as entradas automáticas aqui.")
+    update.message.reply_text("✅ Bot Fallah Exchange & Bets PRÓ está ativo e pronto para enviar suas entradas!")
 
-# Comando de teste
+# Comando /ping para teste
 def ping(update: Update, context: CallbackContext):
-    update.message.reply_text("✅ Bot está online e funcional no Railway!")
+    update.message.reply_text("✅ Bot está online no Railway!")
 
 def main():
     updater = Updater(token=TOKEN, use_context=True)
@@ -30,9 +36,4 @@ def main():
     updater.idle()
 
 if __name__ == '__main__':
-    while True:
-        try:
-            main()
-        except Exception as e:
-            logging.error(f"Erro no bot: {e}")
-            time.sleep(5)  # espera 5 segundos antes de reiniciar em caso de erro
+    main()
