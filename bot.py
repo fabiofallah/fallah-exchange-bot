@@ -1,39 +1,30 @@
 import os
-import asyncio
-import logging
-import nest_asyncio
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from flask import Flask, request
+from telegram import Bot, Update
+from telegram.ext import Dispatcher, CommandHandler, MessageHandler, filters
 
-# Configuração de logs
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 
-# Obtém o token do Railway (variável de ambiente)
-TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+bot = Bot(token=TOKEN)
+app = Flask(__name__)
+dispatcher = Dispatcher(bot=bot, update_queue=None, workers=4, use_context=True)
 
-# Comando /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Bot Fallah Exchange PRÓ está ativo e pronto para enviar entradas!")
+def start(update: Update, context):
+    update.message.reply_text('🤖 Robô Fallah Exchange PRÓ está online e funcionando via Railway webhook.')
 
-# Comando /ping
-async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Bot está online no Railway!")
+def ping(update: Update, context):
+    update.message.reply_text('✅ Pong: Robô ativo.')
 
-# Inicialização principal
-async def main():
-    application = ApplicationBuilder().token(TOKEN).build()
+dispatcher.add_handler(CommandHandler('start', start))
+dispatcher.add_handler(CommandHandler('ping', ping))
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("ping", ping))
-
-    # Aplicar nest_asyncio para evitar erros de loop no Railway
-    nest_asyncio.apply()
-
-    # Rodar o bot
-    await application.run_polling()
+@app.route(f'/{TOKEN}', methods=['POST'])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
+    return 'OK'
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
