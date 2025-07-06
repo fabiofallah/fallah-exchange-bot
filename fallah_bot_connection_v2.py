@@ -11,7 +11,7 @@ connected_image_path = "Alerta de Conexão Telegram.png"
 disconnected_image_path = "Alerta de Desconexão Telegram.png"
 
 bot = Bot(token=your_telegram_bot_token)
-updater = Updater(token=your_telegram_bot_token, use_context=True)
+application = Application.builder().token(your_telegram_bot_token).build()
 dispatcher = updater.dispatcher
 
 is_connected = True
