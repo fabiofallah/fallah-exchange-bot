@@ -30,4 +30,4 @@ def index():
 if __name__ == '__main__':
     bot.delete_webhook()
     bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
-    app.run(host=
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
