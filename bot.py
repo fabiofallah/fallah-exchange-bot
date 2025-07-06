@@ -1,30 +1,33 @@
 import os
 from flask import Flask, request
-from telegram import Bot, Update
-from telegram.ext import Dispatcher, CommandHandler, MessageHandler, filters
+import telegram
 
 TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 
-bot = Bot(token=TOKEN)
+bot = telegram.Bot(token=TOKEN)
 app = Flask(__name__)
-dispatcher = Dispatcher(bot=bot, update_queue=None, workers=4, use_context=True)
-
-def start(update: Update, context):
-    update.message.reply_text('🤖 Robô Fallah Exchange PRÓ está online e funcionando via Railway webhook.')
-
-def ping(update: Update, context):
-    update.message.reply_text('✅ Pong: Robô ativo.')
-
-dispatcher.add_handler(CommandHandler('start', start))
-dispatcher.add_handler(CommandHandler('ping', ping))
 
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    dispatcher.process_update(update)
-    return 'OK'
+    update = telegram.Update.de_json(request.get_json(force=True), bot)
+    chat_id = update.message.chat.id
+    text = update.message.text
+
+    if text == '/start':
+        bot.send_message(chat_id=chat_id, text='✅ Bot Fallah Exchange & Bets PRÓ está ativo e pronto!')
+    elif text == '/ping':
+        bot.send_message(chat_id=chat_id, text='✅ Bot online e operante no Railway!')
+    else:
+        bot.send_message(chat_id=chat_id, text='❌ Comando não reconhecido.')
+
+    return 'ok'
+
+@app.route('/')
+def index():
+    return '✅ Bot Fallah Exchange & Bets PRÓ online.'
 
 if __name__ == '__main__':
+    bot.delete_webhook()
     bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    app.run(host=
