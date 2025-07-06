@@ -1,34 +1,30 @@
-import os
 from flask import Flask, request
 from telegram import Bot, Update
-from telegram.ext import CommandHandler, Dispatcher
+from telegram.ext import Dispatcher, CommandHandler
+import os
 
-TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
+TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+bot = Bot(token=TOKEN)
 
 app = Flask(__name__)
-bot = Bot(token=TOKEN)
-dispatcher = Dispatcher(bot=bot, update_queue=None, workers=4, use_context=True)
+dispatcher = Dispatcher(bot, None, workers=0, use_context=True)
 
-# Comandos
+def start(update, context):
+    context.bot.send_message(chat_id=update.effective_chat.id, text="✅ Robô Fallah Exchange & Bets PRO online e funcionando!")
 
-def start(update: Update, context):
-    update.message.reply_text('✅ Bot Fallah Exchange & Bets PRÓ está online e pronto para enviar suas entradas!')
+dispatcher.add_handler(CommandHandler("start", start))
 
-def ping(update: Update, context):
-    update.message.reply_text('✅ Pong! Bot online e operacional.')
-
-dispatcher.add_handler(CommandHandler('start', start))
-dispatcher.add_handler(CommandHandler('ping', ping))
-
-@app.route(f'/{TOKEN}', methods=['POST'])
+@app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
     dispatcher.process_update(update)
-    return 'ok'
+    return "OK", 200
 
-if __name__ == '__main__':
-    # Configuração do webhook automático no Railway
-    bot.delete_webhook()
-    bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+@app.route("/", methods=["GET"])
+def index():
+    return "✅ Robô Fallah Exchange & Bets PRO ativo!", 200
+
+if __name__ == "__main__":
+    PORT = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=PORT)
+
