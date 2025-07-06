@@ -1,7 +1,7 @@
 import os
 import logging
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # Configuração de log
 logging.basicConfig(
@@ -9,10 +9,9 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# Pega o token do Railway
+# Pega o token de forma segura
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 
-# Verificação se o token existe
 if not TOKEN:
     logging.error("❌ TELEGRAM_BOT_TOKEN não encontrado nas variáveis de ambiente.")
     exit(1)
@@ -25,18 +24,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Bot online e funcional no Railway!")
 
+# Main assíncrono
 async def main():
-    application = Application.builder().token(TOKEN).build()
+    app = ApplicationBuilder().token(TOKEN).build()
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("ping", ping))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("ping", ping))
 
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling()
-    await application.updater.idle()
+    await app.run_polling()
 
 if __name__ == "__main__":
     import asyncio
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    asyncio.run(main())
