@@ -40,10 +40,10 @@ async def send_image():
 
     print("🔄 Procurando arquivo no Drive...")
     if download_file_from_drive(file_name, local_file):
-        print("📤 Enviando imagem ao Telegram...")
-        with open(local_file, 'rb') as fh:
-            for chat_id in CHAT_IDS:
-                await bot.send_photo(chat_id=chat_id, photo=fh, caption="📈 ENTRADA AUTOMÁTICA ENVIADA PELO ROBÔ FALLAH ✅")
+        print("📤 Enviando imagem ao Telegram como DOCUMENTO...")
+        for chat_id in CHAT_IDS:
+            with open(local_file, 'rb') as fh:
+                await bot.send_document(chat_id=chat_id, document=fh, caption="📈 ENTRADA AUTOMÁTICA ENVIADA PELO ROBÔ FALLAH ✅")
         print("✅ Imagem enviada para todos os clientes.")
     else:
         print("⚠️ Arquivo não encontrado, não foi possível enviar.")
