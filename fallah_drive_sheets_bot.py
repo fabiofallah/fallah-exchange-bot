@@ -14,7 +14,7 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
 client = gspread.authorize(creds)
 
 # Abrir a planilha pelo nome
-spreadsheet = client.open("NOME_DA_SUA_PLANILHA")
+spreadsheet = client.open("Fallah Exchange Bets PRO")
 
 # Selecionar a primeira aba
 sheet = spreadsheet.sheet1
