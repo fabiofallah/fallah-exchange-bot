@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import asyncio
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from telegram import Bot
@@ -21,7 +22,7 @@ telegram_token = os.environ.get('TELEGRAM_BOT_TOKEN')
 bot = Bot(token=telegram_token)
 
 # Chat ID do cliente
-CHAT_ID = "1810082886"  # seu chat id fixo de teste
+CHAT_ID = "1810082886"
 
 # IDs das pastas no Google Drive
 FOLDER_IDS = {
@@ -34,8 +35,8 @@ FOLDER_IDS = {
 # Serviço do Drive
 service = build('drive', 'v3', credentials=creds)
 
-# ESCOLHA O TESTE ÚNICO QUE QUER ENVIAR
-TEST_TYPE = "ENTRADA"  # ALTERE PARA: "CONEXAO", "ENTRADA", "CORRESPONDENCIA", "RESULTADO"
+# Tipo de teste (trocar se desejar)
+TEST_TYPE = "ENTRADA"  # "CONEXAO", "ENTRADA", "CORRESPONDENCIA", "RESULTADO"
 
 def get_latest_file(folder_id):
     results = service.files().list(
@@ -49,7 +50,7 @@ def get_latest_file(folder_id):
         return None, None
     return files[0]['id'], files[0]['name']
 
-def download_and_send_file(folder_type):
+async def download_and_send_file(folder_type):
     folder_id = FOLDER_IDS[folder_type]
     file_id, file_name = get_latest_file(folder_id)
 
@@ -62,12 +63,13 @@ def download_and_send_file(folder_type):
             f.write(request.execute())
 
         with open(file_name, 'rb') as photo:
-            bot.send_photo(chat_id=CHAT_ID, photo=photo)
+            await bot.send_photo(chat_id=CHAT_ID, photo=photo)
         logging.info(f"✅ Arquivo '{file_name}' enviado com sucesso ao Telegram.")
     else:
         logging.info(f"Nenhum arquivo encontrado na pasta {folder_type}.")
 
-try:
-    download_and_send_file(TEST_TYPE)
-except Exception as e:
-    logging.error(f"Erro durante o envio: {e}")
+async def main():
+    await download_and_send_file(TEST_TYPE)
+
+if __name__ == '__main__':
+    asyncio.run(main())
