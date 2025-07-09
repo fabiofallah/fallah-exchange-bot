@@ -3,95 +3,93 @@ import json
 import logging
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from PIL import Image, ImageDraw, ImageFont
+from googleapiclient.http import MediaIoBaseDownload
 from telegram import Bot
+import io
+from PIL import Image, ImageDraw, ImageFont
 
 # Configurações iniciais
-SCOPES = ['https://www.googleapis.com/auth/drive']
-SERVICE_ACCOUNT_INFO = json.loads(os.environ['GOOGLE_CREDENTIALS_JSON'])
-TELEGRAM_BOT_TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
-TELEGRAM_CHAT_ID = os.environ['TELEGRAM_CHAT_ID']
-
-bot = Bot(token=TELEGRAM_BOT_TOKEN)
 logging.basicConfig(level=logging.INFO)
+BOT_TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
+CHAT_ID = os.environ['TELEGRAM_CHAT_ID']
+SCOPES = ['https://www.googleapis.com/auth/drive']
 
-# IDs das pastas
+# Credenciais do Google Drive
+creds_info = json.loads(os.environ['GOOGLE_CREDENTIALS_JSON'])
+creds = service_account.Credentials.from_service_account_info(creds_info, scopes=SCOPES)
+service = build('drive', 'v3', credentials=creds)
+
+# IDs fixos das pastas (atualizados)
 PASTA_ENTRADA_ID = '1MRwEUbr3UVZ99BWPpohM5LhGOmU7Mgiz'
-PASTA_ESCUDOS_ID = 'ID_DA_PASTA_DE_ESCUDOS'  # Substituir pelo ID real
 
-# Dados da operação
-dados_operacao = {
-    "time_casa": "PSG",
-    "time_fora": "Real Madrid",
-    "estadio": "MetLife Stadium",
-    "competicao": "FIFA Club World Cup Semifinal",
-    "odds": "2.44",
-    "stake": "R$100",
-    "mercado": "Back PSG",
-    "liquidez": "450K",
-    "horario": "16:00",
-    "resultado": "Aguardando"
-}
+# Nome do arquivo de entrada
+NOME_ARQUIVO_ENTRADA = 'Matriz Entrada Back Exchange.png'
 
-# Autenticação com Google Drive
-credentials = service_account.Credentials.from_service_account_info(
-    SERVICE_ACCOUNT_INFO, scopes=SCOPES)
-service = build('drive', 'v3', credentials=credentials)
-
-def baixar_arquivo_drive(file_name, folder_id, local_path):
+# Função para baixar arquivo do Drive
+def baixar_arquivo_drive(file_name, folder_id, local_file_name):
     query = f"name='{file_name}' and '{folder_id}' in parents and trashed=false"
-    results = service.files().list(q=query, fields="files(id, name)").execute()
+    results = service.files().list(q=query, pageSize=1, fields="files(id, name)").execute()
     items = results.get('files', [])
+
     if not items:
-        logging.error(f"Arquivo {file_name} não encontrado.")
+        logging.error(f"Arquivo {file_name} não encontrado na pasta {folder_id}.")
         return None
+
     file_id = items[0]['id']
     request = service.files().get_media(fileId=file_id)
-    with open(local_path, 'wb') as f:
-        downloader = build('drive', 'v3', credentials=credentials).files().get_media(fileId=file_id)
-        downloader.execute(fd=f)
-    logging.info(f"{file_name} baixado com sucesso.")
-    return local_path
+    fh = io.BytesIO()
+    downloader = MediaIoBaseDownload(fh, request)
 
+    done = False
+    while not done:
+        status, done = downloader.next_chunk()
+        logging.info(f"Download {int(status.progress() * 100)}%.")
+
+    fh.seek(0)
+    with open(local_file_name, 'wb') as f:
+        f.write(fh.read())
+
+    logging.info(f"Arquivo {local_file_name} baixado com sucesso.")
+    return local_file_name
+
+# Função para preencher a matriz automaticamente
 def preencher_matriz():
-    # Baixar matriz de entrada
-    matriz_path = baixar_arquivo_drive('Matriz Entrada Back Exchange.png', PASTA_ENTRADA_ID, 'matriz_entrada.png')
-    if not matriz_path:
+    matriz_path = baixar_arquivo_drive(NOME_ARQUIVO_ENTRADA, PASTA_ENTRADA_ID, 'matriz_entrada.png')
+    if matriz_path is None:
         return
-    # Baixar escudos
-    escudo_casa = baixar_arquivo_drive(f'{dados_operacao["time_casa"]}.png', PASTA_ESCUDOS_ID, 'escudo_casa.png')
-    escudo_fora = baixar_arquivo_drive(f'{dados_operacao["time_fora"]}.png', PASTA_ESCUDOS_ID, 'escudo_fora.png')
 
-    img = Image.open(matriz_path).convert("RGBA")
-    draw = ImageDraw.Draw(img)
-    font = ImageFont.truetype("arial.ttf", 48)
+    # Abrir imagem e preparar para edição
+    image = Image.open(matriz_path).convert("RGBA")
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default()
 
-    # Posicionar escudos
-    if escudo_casa:
-        escudo_c = Image.open(escudo_casa).resize((150, 150))
-        img.paste(escudo_c, (60, 150), escudo_c)
-    if escudo_fora:
-        escudo_f = Image.open(escudo_fora).resize((150, 150))
-        img.paste(escudo_f, (560, 150), escudo_f)
+    # Dados fictícios de teste (ajuste conforme desejar)
+    draw.text((60, 430), "MetLife Stadium", fill="black", font=font)
+    draw.text((60, 470), "Super Mundial FIFA", fill="black", font=font)
+    draw.text((60, 510), "1.90", fill="black", font=font)
+    draw.text((60, 550), "R$ 100", fill="black", font=font)
+    draw.text((60, 590), "Back PSG", fill="black", font=font)
+    draw.text((60, 630), "450K", fill="black", font=font)
+    draw.text((60, 670), "16:00", fill="black", font=font)
+    draw.text((60, 710), "-", fill="black", font=font)
 
-    # Inserir textos
-    draw.text((100, 500), f"{dados_operacao['estadio']}", fill="black", font=font)
-    draw.text((100, 570), f"{dados_operacao['competicao']}", fill="black", font=font)
-    draw.text((100, 640), f"Odds: {dados_operacao['odds']}", fill="black", font=font)
-    draw.text((100, 710), f"Stake: {dados_operacao['stake']}", fill="black", font=font)
-    draw.text((100, 780), f"Mercado: {dados_operacao['mercado']}", fill="black", font=font)
-    draw.text((100, 850), f"Liquidez: {dados_operacao['liquidez']}", fill="black", font=font)
-    draw.text((100, 920), f"Horário: {dados_operacao['horario']}", fill="black", font=font)
-    draw.text((100, 990), f"Resultado: {dados_operacao['resultado']}", fill="black", font=font)
+    # Salvar a imagem preenchida
+    output_image_path = 'matriz_entrada_preenchida.png'
+    image.save(output_image_path)
+    logging.info("Imagem da matriz preenchida gerada com sucesso.")
 
-    img.save('matriz_final.png')
-    logging.info("Matriz preenchida com sucesso.")
+    # Enviar via Telegram
+    bot = Bot(token=BOT_TOKEN)
+    with open(output_image_path, 'rb') as photo:
+        bot.send_photo(chat_id=CHAT_ID, photo=photo)
 
-def enviar_telegram():
-    with open('matriz_final.png', 'rb') as photo:
-        bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=photo)
-    logging.info("Imagem enviada ao Telegram.")
+    logging.info("Imagem enviada ao Telegram com sucesso.")
 
-if __name__ == "__main__":
+# Execução
+def main():
+    logging.info("Iniciando envio automático da matriz de ENTRADA...")
     preencher_matriz()
-    enviar_telegram()
+
+if __name__ == '__main__':
+    main()
+
