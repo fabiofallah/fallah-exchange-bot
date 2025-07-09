@@ -1,60 +1,97 @@
 import os
 import json
 import logging
-import asyncio
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from PIL import Image, ImageDraw, ImageFont
 from telegram import Bot
 
-# Configuração de logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Inicialização do Bot Telegram
+# Configurações iniciais
+SCOPES = ['https://www.googleapis.com/auth/drive']
+SERVICE_ACCOUNT_INFO = json.loads(os.environ['GOOGLE_CREDENTIALS_JSON'])
 TELEGRAM_BOT_TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
-CHAT_ID = os.environ['TELEGRAM_CHAT_ID']
+TELEGRAM_CHAT_ID = os.environ['TELEGRAM_CHAT_ID']
+
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
+logging.basicConfig(level=logging.INFO)
 
-# Credenciais via variável de ambiente
-creds_info = json.loads(os.environ['GOOGLE_CREDENTIALS_JSON'])
-credentials = service_account.Credentials.from_service_account_info(creds_info, scopes=["https://www.googleapis.com/auth/drive"])
+# IDs das pastas
+PASTA_ENTRADA_ID = '1MRwEUbr3UVZ99BWPpohM5LhGOmU7Mgiz'
+PASTA_ESCUDOS_ID = 'ID_DA_PASTA_DE_ESCUDOS'  # Substituir pelo ID real
 
-# IDs das pastas do Drive
-PASTAS = {
-    'ENTRADA': '1MRwEUbr3UVZ99BWPpohM5LhGOmU7Mgiz',
-    'CORRESPONDENCIA': '1eIj28u_wyuS0szW4a2ux5O_zD4qzrafk',
-    'RESULTADO': '1dqWvl6J-qhTuYAQ15gc9atMduOXuzQB_',
-    'CONEXAO': '1kpTe1zLqE7DV7Inxsin171SD5_QIh_KP'
+# Dados da operação
+dados_operacao = {
+    "time_casa": "PSG",
+    "time_fora": "Real Madrid",
+    "estadio": "MetLife Stadium",
+    "competicao": "FIFA Club World Cup Semifinal",
+    "odds": "2.44",
+    "stake": "R$100",
+    "mercado": "Back PSG",
+    "liquidez": "450K",
+    "horario": "16:00",
+    "resultado": "Aguardando"
 }
 
-async def enviar_imagem():
-    try:
-        logger.info("Iniciando envio da matriz de ENTRADA...")
+# Autenticação com Google Drive
+credentials = service_account.Credentials.from_service_account_info(
+    SERVICE_ACCOUNT_INFO, scopes=SCOPES)
+service = build('drive', 'v3', credentials=credentials)
 
-        drive_service = build('drive', 'v3', credentials=credentials)
-        query = f"'{PASTAS['ENTRADA']}' in parents and mimeType contains 'image/' and trashed = false"
+def baixar_arquivo_drive(file_name, folder_id, local_path):
+    query = f"name='{file_name}' and '{folder_id}' in parents and trashed=false"
+    results = service.files().list(q=query, fields="files(id, name)").execute()
+    items = results.get('files', [])
+    if not items:
+        logging.error(f"Arquivo {file_name} não encontrado.")
+        return None
+    file_id = items[0]['id']
+    request = service.files().get_media(fileId=file_id)
+    with open(local_path, 'wb') as f:
+        downloader = build('drive', 'v3', credentials=credentials).files().get_media(fileId=file_id)
+        downloader.execute(fd=f)
+    logging.info(f"{file_name} baixado com sucesso.")
+    return local_path
 
-        results = drive_service.files().list(q=query, pageSize=1, fields="files(id, name)").execute()
-        files = results.get('files', [])
+def preencher_matriz():
+    # Baixar matriz de entrada
+    matriz_path = baixar_arquivo_drive('Matriz Entrada Back Exchange.png', PASTA_ENTRADA_ID, 'matriz_entrada.png')
+    if not matriz_path:
+        return
+    # Baixar escudos
+    escudo_casa = baixar_arquivo_drive(f'{dados_operacao["time_casa"]}.png', PASTA_ESCUDOS_ID, 'escudo_casa.png')
+    escudo_fora = baixar_arquivo_drive(f'{dados_operacao["time_fora"]}.png', PASTA_ESCUDOS_ID, 'escudo_fora.png')
 
-        if not files:
-            logger.info("Nenhuma imagem encontrada na pasta de ENTRADA.")
-            return
+    img = Image.open(matriz_path).convert("RGBA")
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.truetype("arial.ttf", 48)
 
-        file_id = files[0]['id']
-        file_name = files[0]['name']
+    # Posicionar escudos
+    if escudo_casa:
+        escudo_c = Image.open(escudo_casa).resize((150, 150))
+        img.paste(escudo_c, (60, 150), escudo_c)
+    if escudo_fora:
+        escudo_f = Image.open(escudo_fora).resize((150, 150))
+        img.paste(escudo_f, (560, 150), escudo_f)
 
-        logger.info(f"Baixando {file_name}...")
+    # Inserir textos
+    draw.text((100, 500), f"{dados_operacao['estadio']}", fill="black", font=font)
+    draw.text((100, 570), f"{dados_operacao['competicao']}", fill="black", font=font)
+    draw.text((100, 640), f"Odds: {dados_operacao['odds']}", fill="black", font=font)
+    draw.text((100, 710), f"Stake: {dados_operacao['stake']}", fill="black", font=font)
+    draw.text((100, 780), f"Mercado: {dados_operacao['mercado']}", fill="black", font=font)
+    draw.text((100, 850), f"Liquidez: {dados_operacao['liquidez']}", fill="black", font=font)
+    draw.text((100, 920), f"Horário: {dados_operacao['horario']}", fill="black", font=font)
+    draw.text((100, 990), f"Resultado: {dados_operacao['resultado']}", fill="black", font=font)
 
-        request = drive_service.files().get_media(fileId=file_id)
-        file_bytes = request.execute()
+    img.save('matriz_final.png')
+    logging.info("Matriz preenchida com sucesso.")
 
-        await bot.send_photo(chat_id=CHAT_ID, photo=file_bytes)
-        logger.info(f"Imagem {file_name} enviada com sucesso ao Telegram.")
+def enviar_telegram():
+    with open('matriz_final.png', 'rb') as photo:
+        bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=photo)
+    logging.info("Imagem enviada ao Telegram.")
 
-    except Exception as e:
-        logger.error(f"Erro ao enviar imagem: {e}")
-
-if __name__ == '__main__':
-    asyncio.run(enviar_imagem())
-
+if __name__ == "__main__":
+    preencher_matriz()
+    enviar_telegram()
