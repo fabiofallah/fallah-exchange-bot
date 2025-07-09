@@ -1,77 +1,50 @@
 import os
-import logging
-import telegram
-from googleapiclient.discovery import build
+import json
+import io
 from google.oauth2 import service_account
-import time
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
+from telegram import Bot
 
-# Configuração
-TELEGRAM_BOT_TOKEN = 'INSIRA_SEU_TOKEN_AQUI'
-TELEGRAM_CHAT_ID = 'INSIRA_SEU_CHAT_ID_AQUI'
+# === CONFIGURAÇÕES ===
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+CHAT_ID = 'SEU_CHAT_ID_AQUI'  # substitua pelo seu se não estiver usando planilha de clientes
 
-FOLDER_IDS = {
-    "ENTRADA": "ID_DA_PASTA_ENTRADA",
-    "CORRESPONDÊNCIA": "ID_DA_PASTA_CORRESPONDENCIA",
-    "RESULTADO": "ID_DA_PASTA_RESULTADO",
-}
+# === AUTENTICAÇÃO GOOGLE DRIVE ===
+creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
+if creds_json is None:
+    raise Exception("Variável de ambiente GOOGLE_CREDENTIALS_JSON não encontrada")
 
-# Nome dos arquivos específicos para teste controlado
-ARQUIVOS_PERMITIDOS = {
-    "ENTRADA": "Matriz Entrada Back Exchange.png",
-    "CORRESPONDÊNCIA": "Matriz Correspondência Back Exchange.png",
-    "RESULTADO": "Matriz Resultado Back Exchange.png",
-}
+credentials_info = json.loads(creds_json)
+creds = service_account.Credentials.from_service_account_info(credentials_info, scopes=['https://www.googleapis.com/auth/drive'])
 
-# Inicializa bot Telegram
-bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
+service = build('drive', 'v3', credentials=creds)
 
-# Inicializa Google Drive
-SCOPES = ['https://www.googleapis.com/auth/drive']
-SERVICE_ACCOUNT_FILE = 'credentials.json'
+# === BUSCA DO ARQUIVO ESPECÍFICO NA PASTA ENTRADA ===
+# PEGUE O ID DA PASTA ENTRADA E SUBSTITUA AQUI:
+PASTA_ENTRADA_ID = 'COLE_AQUI_O_ID_DA_PASTA_ENTRADA'
 
-credentials = service_account.Credentials.from_service_account_file(
-    SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-drive_service = build('drive', 'v3', credentials=credentials)
+query = f"'{PASTA_ENTRADA_ID}' in parents and name = 'Matriz Entrada Back Exchange.png' and trashed = false"
+results = service.files().list(q=query, fields="files(id, name)").execute()
+items = results.get('files', [])
 
-# Configuração de log
-logging.basicConfig(level=logging.INFO)
+if not items:
+    print("Arquivo não encontrado.")
+else:
+    file_id = items[0]['id']
+    file_name = items[0]['name']
 
-def check_and_send(folder_name):
-    folder_id = FOLDER_IDS[folder_name]
-    target_filename = ARQUIVOS_PERMITIDOS[folder_name]
+    request = service.files().get_media(fileId=file_id)
+    fh = io.BytesIO()
+    downloader = MediaIoBaseDownload(fh, request)
+    done = False
+    while not done:
+        status, done = downloader.next_chunk()
 
-    query = f"'{folder_id}' in parents and name = '{target_filename}' and trashed = false"
-    results = drive_service.files().list(q=query, pageSize=1, fields="files(id, name)").execute()
-    items = results.get('files', [])
+    fh.seek(0)
 
-    if not items:
-        logging.info(f"Sem {target_filename} em {folder_name}.")
-    else:
-        item = items[0]
-        request = drive_service.files().get_media(fileId=item['id'])
-        filename = item['name']
-        filepath = f'/tmp/{filename}'
+    # === ENVIO PARA O TELEGRAM ===
+    bot = Bot(token=TELEGRAM_TOKEN)
+    bot.send_photo(chat_id=CHAT_ID, photo=fh)
 
-        with open(filepath, 'wb') as f:
-            downloader = drive_service.files().get_media(fileId=item['id'])
-            done = False
-            while done is False:
-                status, done = downloader.next_chunk()
-
-        with open(filepath, 'rb') as photo:
-            bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=photo)
-            logging.info(f"Imagem {filename} enviada ao Telegram sem legenda.")
-
-        # Após enviar, mover para lixeira
-        drive_service.files().update(fileId=item['id'], body={'trashed': True}).execute()
-        logging.info(f"{filename} movido para a lixeira após envio.")
-
-def main():
-    while True:
-        for pasta in ["ENTRADA", "CORRESPONDÊNCIA", "RESULTADO"]:
-            check_and_send(pasta)
-            time.sleep(2)
-        time.sleep(10)
-
-if __name__ == '__main__':
-    main()
+    print(f"{file_name} enviado com sucesso para o Telegram.")
