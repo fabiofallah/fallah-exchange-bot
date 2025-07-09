@@ -1,102 +1,78 @@
 import os
-import io
 import json
 import logging
 import asyncio
+from PIL import Image, ImageDraw, ImageFont
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from PIL import Image, ImageDraw, ImageFont
+from googleapiclient.http import MediaIoBaseDownload
 from telegram import Bot
 
-# Configuração de logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Variáveis de ambiente
-credentials_info = json.loads(os.environ['GOOGLE_CREDENTIALS_JSON'])
+# Configurações
+SCOPES = ['https://www.googleapis.com/auth/drive']
+SERVICE_ACCOUNT_INFO = json.loads(os.environ['GOOGLE_CREDENTIALS_JSON'])
 TELEGRAM_BOT_TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
 CHAT_ID = os.environ['TELEGRAM_CHAT_ID']
+PASTA_ENTRADA_ID = '1MRwEUbr3UVZ99BWPpohM5LhGOmU7Mgiz'  # Pasta ENTRADA
+ARQUIVO_ENTRADA_NOME = 'Matriz Entrada Back Exchange.png'
 
-# IDs das pastas e arquivo no Drive
-PASTA_ENTRADA_ID = '1MRwEUbr3UVZ99BWPpohM5LhGOmU7Mgiz'  # Pasta de ENTRADA
-ARQUIVO_ENTRADA = 'Matriz Entrada Back Exchange.png'
-
-# Dados do evento PSG x Real Madrid
-dados_entrada = {
-    'estadio': 'MetLife Stadium',
-    'competicao': 'FIFA Club World Cup - Semifinal',
-    'odds': '2.44',
-    'stake': 'R$100,00',
-    'mercado': 'BACK PSG',
-    'liquidez': '450K',
-    'horario': '16:00',
-    'resultado': '-'  # Entrada ainda em andamento
-}
-
-def baixar_arquivo_drive(service, file_name, folder_id, local_file):
-    results = service.files().list(q=f"'{folder_id}' in parents and name='{file_name}'",
-                                   spaces='drive',
-                                   fields='files(id, name)').execute()
+# Função para baixar arquivo do Google Drive
+def baixar_arquivo_drive(nome_arquivo, id_pasta, nome_saida):
+    creds = service_account.Credentials.from_service_account_info(
+        SERVICE_ACCOUNT_INFO, scopes=SCOPES)
+    service = build('drive', 'v3', credentials=creds)
+    
+    query = f"name='{nome_arquivo}' and '{id_pasta}' in parents and trashed=false"
+    results = service.files().list(q=query, pageSize=1, fields="files(id, name)").execute()
     items = results.get('files', [])
+
     if not items:
-        raise FileNotFoundError(f"Arquivo {file_name} não encontrado na pasta do Drive.")
+        raise FileNotFoundError(f"Arquivo '{nome_arquivo}' não encontrado na pasta do Drive.")
+
     file_id = items[0]['id']
     request = service.files().get_media(fileId=file_id)
-    fh = io.FileIO(local_file, 'wb')
-    downloader = MediaIoBaseDownload(fh, request)
-    done = False
-    while done is False:
-        status, done = downloader.next_chunk()
-    logger.info(f"Download do arquivo {file_name} concluído.")
 
-def preencher_matriz():
-    image = Image.open('matriz_entrada.png').convert('RGBA')
-    draw = ImageDraw.Draw(image)
-    font = ImageFont.load_default()
+    with open(nome_saida, 'wb') as f:
+        downloader = MediaIoBaseDownload(f, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+            logging.info(f"Download {int(status.progress() * 100)}%.")
 
-    # Inserir dados no card
-    draw.text((160, 310), dados_entrada['estadio'], fill='black', font=font)
-    draw.text((160, 360), dados_entrada['competicao'], fill='black', font=font)
-    draw.text((160, 410), dados_entrada['odds'], fill='black', font=font)
-    draw.text((160, 460), dados_entrada['stake'], fill='black', font=font)
-    draw.text((160, 510), dados_entrada['mercado'], fill='black', font=font)
-    draw.text((160, 560), dados_entrada['liquidez'], fill='black', font=font)
-    draw.text((160, 610), dados_entrada['horario'], fill='black', font=font)
-    draw.text((160, 660), dados_entrada['resultado'], fill='black', font=font)
+    logging.info(f"Arquivo {nome_saida} baixado com sucesso.")
+    return nome_saida
 
-    # Inserir escudos nos retângulos (substitua pelos caminhos corretos caso queira os logos)
-    # escudo_casa = Image.open('escudos/psg.png').resize((150, 150))
-    # escudo_fora = Image.open('escudos/real_madrid.png').resize((150, 150))
-    # image.paste(escudo_casa, (40, 100))
-    # image.paste(escudo_fora, (460, 100))
+def preencher_matriz(imagem_path):
+    img = Image.open(imagem_path).convert("RGBA")
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.truetype("arial.ttf", 48)
 
-    image.save('matriz_entrada_pronta.png')
-    logger.info("Imagem da matriz preenchida gerada com sucesso.")
+    draw.text((50, 550), "MetLife Stadium", fill="black", font=font)
+    draw.text((50, 650), "FIFA Club World Cup", fill="black", font=font)
+    draw.text((50, 750), "2.44", fill="black", font=font)
+    draw.text((50, 850), "R$ 100", fill="black", font=font)
+    draw.text((50, 950), "Match Odds", fill="black", font=font)
+    draw.text((50, 1050), "450K", fill="black", font=font)
+    draw.text((50, 1150), "16:00", fill="black", font=font)
+    draw.text((50, 1250), "--", fill="black", font=font)
+
+    imagem_saida = "matriz_preenchida.png"
+    img.save(imagem_saida)
+    logging.info("Imagem da matriz preenchida gerada com sucesso.")
+    return imagem_saida
 
 async def main():
-    credentials = service_account.Credentials.from_service_account_info(credentials_info, scopes=['https://www.googleapis.com/auth/drive'])
-    service = build('drive', 'v3', credentials=credentials)
-
-    # Baixar a matriz do Drive
-    request = service.files().list(q=f"'{PASTA_ENTRADA_ID}' in parents and name='{ARQUIVO_ENTRADA}'", spaces='drive').execute()
-    file_id = request['files'][0]['id']
-    request_file = service.files().get_media(fileId=file_id)
-    fh = io.BytesIO()
-    downloader = MediaIoBaseDownload(fh, request_file)
-    done = False
-    while done is False:
-        status, done = downloader.next_chunk()
-    with open('matriz_entrada.png', 'wb') as f:
-        f.write(fh.getbuffer())
-    logger.info("Arquivo matriz_entrada.png baixado do Drive.")
-
-    preencher_matriz()
-
+    logging.basicConfig(level=logging.INFO)
+    logging.info("Iniciando envio automático da matriz de ENTRADA...")
+    
+    matriz_path = baixar_arquivo_drive(ARQUIVO_ENTRADA_NOME, PASTA_ENTRADA_ID, 'matriz_entrada.png')
+    matriz_preenchida_path = preencher_matriz(matriz_path)
+    
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
-    with open('matriz_entrada_pronta.png', 'rb') as photo:
+    with open(matriz_preenchida_path, 'rb') as photo:
         await bot.send_photo(chat_id=CHAT_ID, photo=photo)
-    logger.info("Imagem enviada ao Telegram com sucesso.")
+    logging.info("Imagem enviada ao Telegram com sucesso.")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())
 
