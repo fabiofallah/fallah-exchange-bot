@@ -1,50 +1,73 @@
 import os
 import json
-import io
+import logging
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
 from telegram import Bot
 
-# === CONFIGURAÇÕES ===
-TELEGRAM_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-CHAT_ID = 'SEU_CHAT_ID_AQUI'  # substitua pelo seu se não estiver usando planilha de clientes
+# Logging para Railway
+logging.basicConfig(level=logging.INFO)
 
-# === AUTENTICAÇÃO GOOGLE DRIVE ===
+# Credenciais do Google
 creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
-if creds_json is None:
-    raise Exception("Variável de ambiente GOOGLE_CREDENTIALS_JSON não encontrada")
+creds_dict = json.loads(creds_json)
+creds = service_account.Credentials.from_service_account_info(
+    creds_dict,
+    scopes=['https://www.googleapis.com/auth/drive.readonly']
+)
 
-credentials_info = json.loads(creds_json)
-creds = service_account.Credentials.from_service_account_info(credentials_info, scopes=['https://www.googleapis.com/auth/drive'])
+# Bot Token e inicialização
+telegram_token = os.environ.get('TELEGRAM_BOT_TOKEN')
+bot = Bot(token=telegram_token)
 
+# Chat ID do cliente
+CHAT_ID = "1810082886"  # seu chat id fixo de teste
+
+# IDs das pastas no Google Drive
+FOLDER_IDS = {
+    "CONEXAO": "1kpTe1zLqE7DV7Inxsin171SD5_QIh_KP",
+    "ENTRADA": "1MRwEUbr3UVZ99BWPpohM5LhGOmU7Mgiz",
+    "CORRESPONDENCIA": "1eIj28u_wyuS0szW4a2ux5O_zD4qzrafk",
+    "RESULTADO": "1dqWvl6J-qhTuYAQ15gc9atMduOXuzQB_"
+}
+
+# Serviço do Drive
 service = build('drive', 'v3', credentials=creds)
 
-# === BUSCA DO ARQUIVO ESPECÍFICO NA PASTA ENTRADA ===
-# PEGUE O ID DA PASTA ENTRADA E SUBSTITUA AQUI:
-PASTA_ENTRADA_ID = 'COLE_AQUI_O_ID_DA_PASTA_ENTRADA'
+# ESCOLHA O TESTE ÚNICO QUE QUER ENVIAR
+TEST_TYPE = "ENTRADA"  # ALTERE PARA: "CONEXAO", "ENTRADA", "CORRESPONDENCIA", "RESULTADO"
 
-query = f"'{PASTA_ENTRADA_ID}' in parents and name = 'Matriz Entrada Back Exchange.png' and trashed = false"
-results = service.files().list(q=query, fields="files(id, name)").execute()
-items = results.get('files', [])
+def get_latest_file(folder_id):
+    results = service.files().list(
+        q=f"'{folder_id}' in parents and trashed = false",
+        orderBy="createdTime desc",
+        pageSize=1,
+        fields="files(id, name)"
+    ).execute()
+    files = results.get('files', [])
+    if not files:
+        return None, None
+    return files[0]['id'], files[0]['name']
 
-if not items:
-    print("Arquivo não encontrado.")
-else:
-    file_id = items[0]['id']
-    file_name = items[0]['name']
+def download_and_send_file(folder_type):
+    folder_id = FOLDER_IDS[folder_type]
+    file_id, file_name = get_latest_file(folder_id)
 
-    request = service.files().get_media(fileId=file_id)
-    fh = io.BytesIO()
-    downloader = MediaIoBaseDownload(fh, request)
-    done = False
-    while not done:
-        status, done = downloader.next_chunk()
+    if file_id and file_name:
+        logging.info(f"Baixando arquivo '{file_name}' da pasta {folder_type}...")
+        request = service.files().get_media(fileId=file_id)
+        with open(file_name, 'wb') as f:
+            downloader = request
+            downloader.execute()
+            f.write(request.execute())
 
-    fh.seek(0)
+        with open(file_name, 'rb') as photo:
+            bot.send_photo(chat_id=CHAT_ID, photo=photo)
+        logging.info(f"✅ Arquivo '{file_name}' enviado com sucesso ao Telegram.")
+    else:
+        logging.info(f"Nenhum arquivo encontrado na pasta {folder_type}.")
 
-    # === ENVIO PARA O TELEGRAM ===
-    bot = Bot(token=TELEGRAM_TOKEN)
-    bot.send_photo(chat_id=CHAT_ID, photo=fh)
-
-    print(f"{file_name} enviado com sucesso para o Telegram.")
+try:
+    download_and_send_file(TEST_TYPE)
+except Exception as e:
+    logging.error(f"Erro durante o envio: {e}")
