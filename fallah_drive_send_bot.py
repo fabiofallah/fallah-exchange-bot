@@ -1,75 +1,70 @@
 import os
-import json
-import logging
+import io
 import asyncio
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
+from PIL import Image, ImageDraw, ImageFont
 from telegram import Bot
+from pydrive.auth import GoogleAuth
+from pydrive.drive import GoogleDrive
 
-# Logging para Railway
-logging.basicConfig(level=logging.INFO)
+# ==========================
+# CONFIGURAÇÕES
+TELEGRAM_BOT_TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
+CHAT_ID = os.environ['TELEGRAM_CHAT_ID']  # coloque seu chat_id se preferir fixo
+PASTA_ENTRADA_ID = '1MRwEUbr3UVZ99BWPpohM5LhGOmU7Mgiz'
+ESCUDOS_PASTA_ID = 'COLOQUE_AQUI_O_ID_DA_PASTA_DE_ESCUDOS'
+bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
-# Credenciais do Google
-creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
-creds_dict = json.loads(creds_json)
-creds = service_account.Credentials.from_service_account_info(
-    creds_dict,
-    scopes=['https://www.googleapis.com/auth/drive.readonly']
-)
+# ==========================
+# AUTENTICAÇÃO DRIVE
+gauth = GoogleAuth()
+gauth.LocalWebserverAuth()
+drive = GoogleDrive(gauth)
 
-# Bot Token e inicialização
-telegram_token = os.environ.get('TELEGRAM_BOT_TOKEN')
-bot = Bot(token=telegram_token)
+async def enviar_entrada():
+    # Busca arquivo de entrada específico
+    file_list = drive.ListFile({'q': f"'{PASTA_ENTRADA_ID}' in parents and trashed=false and title contains 'Matriz Entrada Back Exchange'"}).GetList()
+    if not file_list:
+        print("❌ Matriz de entrada não encontrada.")
+        return
+    file_drive = file_list[0]
+    file_drive.GetContentFile('entrada_base.png')
 
-# Chat ID do cliente
-CHAT_ID = "1810082886"
+    # ABRE A IMAGEM PARA EDIÇÃO
+    imagem = Image.open('entrada_base.png').convert('RGB')
+    draw = ImageDraw.Draw(imagem)
 
-# IDs das pastas no Google Drive
-FOLDER_IDS = {
-    "CONEXAO": "1kpTe1zLqE7DV7Inxsin171SD5_QIh_KP",
-    "ENTRADA": "1MRwEUbr3UVZ99BWPpohM5LhGOmU7Mgiz",
-    "CORRESPONDENCIA": "1eIj28u_wyuS0szW4a2ux5O_zD4qzrafk",
-    "RESULTADO": "1dqWvl6J-qhTuYAQ15gc9atMduOXuzQB_"
-}
+    # DADOS DA ENTRADA PARA PREENCHER
+    confronto = "PSG x Real Madrid"
+    estadio = "King Abdullah Sports City"
+    competicao = "Super Mundial FIFA"
+    odds = "1,85"
+    stake = "R$ 100,00"
+    mercado = "Back PSG"
+    liquidez = "450 K"
+    horario = "15:00"
+    minutos = "Pré-jogo"
 
-# Serviço do Drive
-service = build('drive', 'v3', credentials=creds)
+    # CONFIGURAÇÕES DE FONTE
+    fonte = ImageFont.truetype("arial.ttf", 48)
 
-# Tipo de teste (trocar se desejar)
-TEST_TYPE = "ENTRADA"  # "CONEXAO", "ENTRADA", "CORRESPONDENCIA", "RESULTADO"
+    # INSERE TEXTOS NOS CAMPOS (ajuste as coordenadas conforme seu layout)
+    draw.text((50, 300), confronto, font=fonte, fill='white')
+    draw.text((50, 380), estadio, font=fonte, fill='white')
+    draw.text((50, 460), competicao, font=fonte, fill='white')
+    draw.text((50, 540), f"Mercado: {mercado}", font=fonte, fill='white')
+    draw.text((50, 620), f"Odds: {odds}", font=fonte, fill='white')
+    draw.text((50, 700), f"Stake: {stake}", font=fonte, fill='white')
+    draw.text((50, 780), f"Liquidez: {liquidez}", font=fonte, fill='white')
+    draw.text((50, 860), f"Horário: {horario} ({minutos})", font=fonte, fill='white')
 
-def get_latest_file(folder_id):
-    results = service.files().list(
-        q=f"'{folder_id}' in parents and trashed = false",
-        orderBy="createdTime desc",
-        pageSize=1,
-        fields="files(id, name)"
-    ).execute()
-    files = results.get('files', [])
-    if not files:
-        return None, None
-    return files[0]['id'], files[0]['name']
+    # SALVA TEMPORÁRIO PARA ENVIO
+    imagem.save("entrada_preenchida.png", "PNG")
 
-async def download_and_send_file(folder_type):
-    folder_id = FOLDER_IDS[folder_type]
-    file_id, file_name = get_latest_file(folder_id)
+    # ENVIA AO TELEGRAM
+    with open("entrada_preenchida.png", "rb") as img:
+        await bot.send_document(chat_id=CHAT_ID, document=img)
 
-    if file_id and file_name:
-        logging.info(f"Baixando arquivo '{file_name}' da pasta {folder_type}...")
-        request = service.files().get_media(fileId=file_id)
-        with open(file_name, 'wb') as f:
-            downloader = request
-            downloader.execute()
-            f.write(request.execute())
-
-        with open(file_name, 'rb') as photo:
-            await bot.send_photo(chat_id=CHAT_ID, photo=photo)
-        logging.info(f"✅ Arquivo '{file_name}' enviado com sucesso ao Telegram.")
-    else:
-        logging.info(f"Nenhum arquivo encontrado na pasta {folder_type}.")
-
-async def main():
-    await download_and_send_file(TEST_TYPE)
+    print("✅ Entrada enviada com sucesso ao Telegram.")
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    asyncio.run(enviar_entrada())
