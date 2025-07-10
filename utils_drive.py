@@ -1,44 +1,28 @@
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
-import io
 import os
+import io
 import logging
+from googleapiclient.http import MediaIoBaseDownload
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
 
-def baixar_arquivo_drive(nome_arquivo, tipo_operacao, destino):
+def baixar_arquivo_drive(nome_arquivo, pasta_id, destino):
     try:
-        creds_json = os.environ['GOOGLE_CREDENTIALS_JSON']
-        creds_dict = eval(creds_json)
+        creds_dict = eval(os.environ['GOOGLE_CREDENTIALS_JSON'])
         creds = service_account.Credentials.from_service_account_info(creds_dict)
-
         service = build('drive', 'v3', credentials=creds)
 
-        pasta_drive_map = {
-            "ENTRADA": os.environ.get('PASTA_ENTRADA_ID'),
-            "CORRESPONDENCIA": os.environ.get('PASTA_CORRESPONDENCIA_ID'),
-            "RESULTADO": os.environ.get('PASTA_RESULTADO_ID'),
-            "CONEXAO": os.environ.get('PASTA_CONEXAO_ID'),
-            "AFRICA": os.environ.get('PASTA_AFRICA_ID'),
-            "AMERICA": os.environ.get('PASTA_AMERICA_ID'),
-            "ASIA": os.environ.get('PASTA_ASIA_ID'),
-            "EUROPA": os.environ.get('PASTA_EUROPA_ID'),
-            "BANDEIRAS": os.environ.get('PASTA_BANDEIRAS_ID')
-        }
-
-        pasta_id = pasta_drive_map.get(tipo_operacao.upper())
-
-        if not pasta_id:
-            logging.error(f"❌ Tipo de operação '{tipo_operacao}' não encontrado no mapeamento.")
-            return None
-
-        logging.info(f"🔍 Buscando arquivo '{nome_arquivo}' na pasta '{tipo_operacao}' com ID: {pasta_id}")
+        # Cria a pasta de destino se não existir
+        pasta_destino = os.path.dirname(destino)
+        if not os.path.exists(pasta_destino):
+            os.makedirs(pasta_destino)
+            logging.info(f"📂 Pasta '{pasta_destino}' criada automaticamente.")
 
         query = f"name='{nome_arquivo}' and '{pasta_id}' in parents and trashed = false"
         results = service.files().list(q=query, fields="files(id, name)").execute()
         items = results.get('files', [])
 
         if not items:
-            logging.error(f"❌ Arquivo '{nome_arquivo}' não encontrado na pasta de {tipo_operacao}.")
+            logging.error(f"❌ Arquivo '{nome_arquivo}' não encontrado na pasta de ID '{pasta_id}'.")
             return None
 
         file_id = items[0]['id']
@@ -51,7 +35,7 @@ def baixar_arquivo_drive(nome_arquivo, tipo_operacao, destino):
             if status:
                 logging.info(f"⬇️ Download {int(status.progress() * 100)}% concluído.")
 
-        logging.info(f"✅ Arquivo '{nome_arquivo}' baixado com sucesso para '{destino}'.")
+        logging.info(f"✅ Arquivo '{nome_arquivo}' baixado com sucesso em '{destino}'.")
         return destino
 
     except Exception as e:
