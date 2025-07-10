@@ -1,72 +1,66 @@
 import os
-import io
 import logging
-from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
+from google.oauth2.service_account import Credentials
+import io
 
-def baixar_arquivo_drive(nome_arquivo, tipo_operacao, destino_pasta='/app/matrizes_oficiais/'):
+def baixar_arquivo_drive(nome_arquivo, tipo_operacao, destino):
     try:
-        # Configuração de logging
-        logging.basicConfig(level=logging.INFO)
-        logger = logging.getLogger(__name__)
-
-        # Cria a pasta caso não exista
-        if not os.path.exists(destino_pasta):
-            os.makedirs(destino_pasta)
-            logger.info(f"📁 Pasta '{destino_pasta}' criada automaticamente.")
-
-        # Credenciais
         creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
-        creds_dict = eval(creds_json)
-        creds = service_account.Credentials.from_service_account_info(creds_dict)
+        if creds_json is None:
+            logging.error("Credenciais do Google não encontradas nas variáveis de ambiente.")
+            return False
 
+        creds = Credentials.from_service_account_info(eval(creds_json))
         service = build('drive', 'v3', credentials=creds)
 
-        # Mapeamento de pastas
-        pasta_drive_map = {
-            'ENTRADA': os.environ.get('PASTA_ENTRADA_ID'),
-            'RESULTADO': os.environ.get('PASTA_RESULTADO_ID'),
-            'CORRESPONDENCIA': os.environ.get('PASTA_CORRESPONDENCIA_ID'),
-            'CONECAO': os.environ.get('PASTA_CONEXAO_ID'),
-            'AFRICA': os.environ.get('PASTA_AFRICA_ID'),
-            'AMERICA': os.environ.get('PASTA_AMERICA_ID'),
-            'ASIA': os.environ.get('PASTA_ASIA_ID'),
-            'EUROPA': os.environ.get('PASTA_EUROPA_ID'),
-            'BANDEIRAS': os.environ.get('PASTA_BANDEIRAS_ID')
-        }
+        pasta_id = os.environ.get(f'PASTA_{tipo_operacao.upper()}_ID')
+        if pasta_id is None:
+            logging.error(f"ID da pasta para {tipo_operacao} não encontrada nas variáveis de ambiente.")
+            return False
 
-        pasta_id = pasta_drive_map.get(tipo_operacao.upper())
-        if not pasta_id:
-            logger.error(f"❌ Tipo de operação '{tipo_operacao}' não encontrado no mapeamento.")
-            return None
-
-        # Busca pelo arquivo
-        query = f"name='{nome_arquivo}' and '{pasta_id}' in parents and trashed = false"
+        query = f"name='{nome_arquivo}' and '{pasta_id}' in parents and trashed=false"
         results = service.files().list(q=query, fields="files(id, name)").execute()
         items = results.get('files', [])
 
         if not items:
-            logger.error(f"❌ Arquivo '{nome_arquivo}' não encontrado na pasta de {tipo_operacao}.")
-            return None
+            logging.error(f"Arquivo {nome_arquivo} não encontrado na pasta do Drive.")
+            return False
 
         file_id = items[0]['id']
         request = service.files().get_media(fileId=file_id)
 
-        caminho_completo = os.path.join(destino_pasta, nome_arquivo)
+        if not os.path.exists(os.path.dirname(destino)):
+            os.makedirs(os.path.dirname(destino))
 
-        fh = io.FileIO(caminho_completo, 'wb')
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
+        with io.FileIO(destino, 'wb') as fh:
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while not done:
+                status, done = downloader.next_chunk()
+                if status:
+                    logging.info(f"Download {int(status.progress() * 100)}% concluído.")
 
-        while not done:
-            status, done = downloader.next_chunk()
-            if status:
-                logger.info(f"⬇️ Download {int(status.progress() * 100)}% concluído.")
+        logging.info(f"Arquivo '{nome_arquivo}' baixado e salvo em '{destino}'.")
 
-        logger.info(f"✅ Arquivo '{nome_arquivo}' baixado e salvo em '{caminho_completo}'.")
-        return caminho_completo
+        # 🚩 Verificação após download:
+        if os.path.isdir(destino):
+            arquivos_na_pasta = os.listdir(destino)
+            arquivos_validos = [arq for arq in arquivos_na_pasta if os.path.isfile(os.path.join(destino, arq))]
+            if arquivos_validos:
+                destino_final = os.path.join(destino, arquivos_validos[0])
+                logging.info(f"Arquivo válido encontrado dentro da pasta: {destino_final}")
+                return destino_final
+            else:
+                logging.error(f"Nenhum arquivo válido encontrado dentro de '{destino}'.")
+                return False
+        elif os.path.isfile(destino):
+            return destino
+        else:
+            logging.error(f"O caminho '{destino}' não é um arquivo válido para envio.")
+            return False
 
     except Exception as e:
-        logger.error(f"❌ Erro ao baixar arquivo do Drive: {e}")
-        return None
+        logging.error(f"Erro ao baixar arquivo do Drive: {e}")
+        return False
