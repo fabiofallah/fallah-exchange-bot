@@ -1,9 +1,6 @@
 import os
-import json
 import logging
 import asyncio
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
 from telegram import Bot
 from PIL import Image, ImageDraw, ImageFont
 from utils_drive import baixar_arquivo_drive
@@ -19,40 +16,39 @@ PASTA_ENTRADA_ID = os.environ['PASTA_ENTRADA_ID']  # id da pasta de entrada no D
 
 # Função para preencher a matriz
 def preencher_matriz(matriz_path):
-    # Abre a imagem
     img = Image.open(matriz_path).convert('RGB')
     draw = ImageDraw.Draw(img)
     
-    # Fonte (ajuste conforme necessário)
-    fonte = ImageFont.truetype("arial.ttf", 30)
+    try:
+        fonte = ImageFont.truetype("arial.ttf", 30)
+    except:
+        fonte = ImageFont.load_default()
+        logger.warning("Fonte arial.ttf não encontrada. Usando fonte padrão.")
 
-    # Informações para preencher
     estadio = "MetLife Stadium"
-    competicao = "Super Mundial Clubes FIFA"
+    competicao = "FIFA Club World Cup"
     odds = "2.44"
     stake = "R$ 100"
-    mercado = "BACK PSG"
+    mercado = "Match Odds"
     liquidez = "450K"
     horario = "16:00"
-    resultado = "-"
+    resultado = "Aguardando"
 
-    # Posições aproximadas (ajuste conforme a sua matriz)
-    draw.text((100, 500), f"{estadio}", font=fonte, fill="black")
-    draw.text((100, 550), f"{competicao}", font=fonte, fill="black")
-    draw.text((100, 600), f"{odds}", font=fonte, fill="black")
-    draw.text((100, 650), f"{stake}", font=fonte, fill="black")
-    draw.text((100, 700), f"{mercado}", font=fonte, fill="black")
-    draw.text((100, 750), f"{liquidez}", font=fonte, fill="black")
-    draw.text((100, 800), f"{horario}", font=fonte, fill="black")
-    draw.text((100, 850), f"{resultado}", font=fonte, fill="black")
+    draw.text((100, 500), f"Estádio: {estadio}", font=fonte, fill="black")
+    draw.text((100, 550), f"Competição: {competicao}", font=fonte, fill="black")
+    draw.text((100, 600), f"Odds: {odds}", font=fonte, fill="black")
+    draw.text((100, 650), f"Stake: {stake}", font=fonte, fill="black")
+    draw.text((100, 700), f"Mercado: {mercado}", font=fonte, fill="black")
+    draw.text((100, 750), f"Liquidez: {liquidez}", font=fonte, fill="black")
+    draw.text((100, 800), f"Horário: {horario}", font=fonte, fill="black")
+    draw.text((100, 850), f"Resultado: {resultado}", font=fonte, fill="black")
 
-    # Salva a imagem preenchida
     output_path = "matriz_entrada_preenchida.png"
     img.save(output_path)
     logger.info("Imagem da matriz preenchida gerada com sucesso.")
     return output_path
 
-# Função principal de execução
+# Função principal
 async def main():
     logger.info("Iniciando envio automático da matriz de ENTRADA...")
 
@@ -74,4 +70,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
