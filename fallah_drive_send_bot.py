@@ -29,4 +29,6 @@ def preencher_matriz(matriz_path):
     resultado = "Aguardando"
 
     # Texto no topo (branco)
-    cv2.putText(img, "BACK - LAY", (25
+    cv2.putText(img, "BACK - LAY", (250, 160), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 3, cv2.LINE_AA)
+
+    # Texto n
