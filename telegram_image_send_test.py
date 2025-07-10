@@ -1,24 +1,31 @@
-# telegram_image_send_test.py
-
+import os
 import asyncio
 from telegram import Bot
-import os
 
-async def send_image():
-    TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-    TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
-
-    bot = Bot(token=TELEGRAM_BOT_TOKEN)
-
-    # Confirme que o caminho abaixo está correto e aponta para o arquivo PNG
-    image_path = 'matriz_teste_envio.png'
-
+async def enviar_imagem_telegram():
     try:
-        with open(image_path, 'rb') as img:
-            await bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=img, caption="Envio de teste do Robô Fallah Exchange PRO.")
-        print("✅ Imagem enviada com sucesso para o Telegram.")
-    except Exception as e:
-        print(f"❌ Erro ao enviar imagem: {e}")
+        token = os.getenv('TELEGRAM_BOT_TOKEN')
+        chat_id = os.getenv('TELEGRAM_CHAT_ID')
 
-if __name__ == '__main__':
-    asyncio.run(send_image())
+        if not token or not chat_id:
+            print("❌ TOKEN ou CHAT_ID não configurados nas variáveis de ambiente.")
+            return
+
+        bot = Bot(token=token)
+
+        caminho_imagem = 'app/matrizes_oficiais/Matriz Entrada Back Exchange.png'
+
+        if not os.path.isfile(caminho_imagem):
+            print(f"❌ Arquivo não encontrado: {caminho_imagem}")
+            return
+
+        with open(caminho_imagem, 'rb') as img:
+            await bot.send_photo(chat_id=chat_id, photo=img)
+
+        print(f"✅ Imagem '{caminho_imagem}' enviada com sucesso ao Telegram.")
+
+    except Exception as e:
+        print(f"❌ Erro ao enviar imagem ao Telegram: {e}")
+
+if __name__ == "__main__":
+    asyncio.run(enviar_imagem_telegram())
