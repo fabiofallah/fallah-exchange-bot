@@ -2,30 +2,24 @@ import os
 import asyncio
 from telegram import Bot
 
-async def enviar_imagem_telegram():
-    try:
-        token = os.getenv('TELEGRAM_BOT_TOKEN')
-        chat_id = os.getenv('TELEGRAM_CHAT_ID')
+async def main():
+    TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+    TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 
-        if not token or not chat_id:
-            print("❌ TOKEN ou CHAT_ID não configurados nas variáveis de ambiente.")
-            return
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("Erro: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurados no Railway.")
+        return
 
-        bot = Bot(token=token)
+    bot = Bot(token=TELEGRAM_BOT_TOKEN)
+    image_path = 'matrizes_oficiais/Matriz Entrada Back Exchange.png'
 
-        caminho_imagem = 'app/matrizes_oficiais/Matriz Entrada Back Exchange.png'
+    if not os.path.exists(image_path):
+        print(f"Erro: Arquivo {image_path} não encontrado.")
+        return
 
-        if not os.path.isfile(caminho_imagem):
-            print(f"❌ Arquivo não encontrado: {caminho_imagem}")
-            return
+    with open(image_path, 'rb') as img:
+        await bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=img)
+        print(f"✅ Imagem {image_path} enviada com sucesso ao Telegram.")
 
-        with open(caminho_imagem, 'rb') as img:
-            await bot.send_photo(chat_id=chat_id, photo=img)
-
-        print(f"✅ Imagem '{caminho_imagem}' enviada com sucesso ao Telegram.")
-
-    except Exception as e:
-        print(f"❌ Erro ao enviar imagem ao Telegram: {e}")
-
-if __name__ == "__main__":
-    asyncio.run(enviar_imagem_telegram())
+if __name__ == '__main__':
+    asyncio.run(main())
