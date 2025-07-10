@@ -19,6 +19,7 @@ def preencher_matriz(matriz_path):
     logger.info(f"Abrindo matriz com OpenCV: {matriz_path}")
     img = cv2.imread(matriz_path)
 
+    # Dados reais
     estadio = "MetLife Stadium"
     competicao = "FIFA Club WC"
     odds = "2.44"
@@ -28,18 +29,17 @@ def preencher_matriz(matriz_path):
     horario = "16:00"
     resultado = "Aguardando"
 
-    # Texto no topo (branco)
+    # Texto no topo
     cv2.putText(img, "BACK - LAY", (250, 160), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 3, cv2.LINE_AA)
 
-    # Alinhamento quadro bege
+    # Dados e suas posições
     dados = [estadio, competicao, odds, stake, mercado, liquidez, horario, resultado]
-    
-    x_coluna = 250  # Ajuste horizontal para esquerda
-    y_inicial = 520 # Ajuste vertical inicial
-    y_salto = 85    # Espaçamento entre linhas
+    y_positions = [540, 625, 710, 795, 880, 965, 1050, 1135]  # alinhado com cada emoji
+
+    x_coluna = 380  # alinhamento horizontal consistente
 
     for idx, dado in enumerate(dados):
-        posicao = (x_coluna, y_inicial + idx * y_salto)
+        posicao = (x_coluna, y_positions[idx])
         logger.info(f"Escrevendo '{dado}' em {posicao}")
         cv2.putText(
             img,
@@ -83,4 +83,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
