@@ -37,7 +37,7 @@ else:
 if os.path.isfile(caminho_matriz):
     try:
         with open(caminho_matriz, 'rb') as img:
-            bot.send_photo(chat_id=chat_id, photo=img)
+            await bot.send_photo(chat_id=chat_id, photo=img)
         logger.info(f"✅ Imagem '{matriz_nome_drive}' enviada com sucesso ao Telegram.")
     except Exception as e:
         logger.error(f"Erro ao enviar imagem ao Telegram: {e}")
