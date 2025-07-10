@@ -31,9 +31,9 @@ def preencher_matriz(matriz_path):
 
     # Lista dos dados
     dados = [estadio, competicao, odds, stake, mercado, liquidez, horario, resultado]
-    # Posições verticais alinhadas com os emojis
-    y_positions = [540, 625, 710, 795, 880, 965, 1050, 1135]
-    x_coluna = 380  # alinhamento horizontal consistente
+    # Posições verticais (ajustadas com precisão)
+    y_positions = [490, 580, 670, 760, 850, 940, 1030, 1120]
+    x_coluna = 310  # alinhamento horizontal ajustado
 
     for idx, dado in enumerate(dados):
         posicao = (x_coluna, y_positions[idx])
@@ -43,9 +43,9 @@ def preencher_matriz(matriz_path):
             dado,
             posicao,
             cv2.FONT_HERSHEY_SIMPLEX,
-            1.2,
+            1.0,
             (0, 0, 0),
-            3,
+            2,
             cv2.LINE_AA
         )
 
@@ -56,7 +56,7 @@ def preencher_matriz(matriz_path):
 
 # Função principal
 async def main():
-    logger.info("Iniciando envio automático da matriz de ENTRADA refinada, sem texto extra no topo...")
+    logger.info("Iniciando envio automático da matriz de ENTRADA com alinhamento refinado e preciso...")
 
     matriz_nome_drive = "Matriz Entrada Back Exchange.png"
     matriz_nome_local = "matriz_entrada_back_exchange.png"
@@ -76,7 +76,4 @@ async def main():
         else:
             logger.error(f"Arquivo gerado {matriz_preenchida_path} não encontrado. Envio abortado.")
     else:
-        logger.error(f"Arquivo {matriz_nome_drive} não encontrado na pasta do Drive.")
-
-if __name__ == "__main__":
-    asyncio.run(main())
+        logger.error(f"Arquivo {matriz_nome_drive} não encontrado na
