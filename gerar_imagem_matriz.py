@@ -1,57 +1,65 @@
+import os
 import cv2
 import numpy as np
-import os
+from telegram import Bot
+import logging
 
-# Caminho da matriz buscada dinamicamente e salva pelo bot
+logging.basicConfig(level=logging.INFO)
+
+# Configurações
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
+bot = Bot(token=TELEGRAM_BOT_TOKEN)
+
+# Caminhos
 pasta_matriz = 'matrizes_oficiais'
-matriz_nome_drive = 'Matriz Entrada Back Exchange.png'  # Nome como chega do Drive
-caminho_matriz = os.path.join(pasta_matriz, matriz_nome_drive)
+nome_arquivo_matriz = 'Matriz Entrada Back Exchange.png'
+caminho_matriz = os.path.join(pasta_matriz, nome_arquivo_matriz)
+caminho_escudo = 'escudos/time_teste.png'  # ajuste para o nome do escudo desejado
+caminho_saida = os.path.join(pasta_matriz, 'matriz_entrada_preenchida.png')
 
-# Nome de saída padronizado para envio ao Telegram
-saida_nome = 'matriz_entrada_preenchida.png'
-caminho_saida = os.path.join(pasta_matriz, saida_nome)
-
-# Verifica se o arquivo existe antes de prosseguir
+# Verificação de existência
 if not os.path.exists(caminho_matriz):
-    raise FileNotFoundError(f"❌ Arquivo '{caminho_matriz}' não encontrado. Verifique o processo de download do Drive.")
+    logging.error(f"❌ Matriz não encontrada em {caminho_matriz}")
+    exit()
+if not os.path.exists(caminho_escudo):
+    logging.error(f"❌ Escudo não encontrado em {caminho_escudo}")
+    exit()
 
-# Carregar a imagem da matriz
+# Carregar matriz
 matriz = cv2.imread(caminho_matriz)
+altura_matriz, largura_matriz = matriz.shape[:2]
 
-# Ajustar a largura para 1080 mantendo a proporção para Telegram
-altura_original, largura_original = matriz.shape[:2]
-escala = 1080 / largura_original
-nova_largura = 1080
-nova_altura = int(altura_original * escala)
-matriz = cv2.resize(matriz, (nova_largura, nova_altura))
+# Carregar escudo
+escudo = cv2.imread(caminho_escudo, cv2.IMREAD_UNCHANGED)
+escudo = cv2.resize(escudo, (180, 180))  # ajuste de tamanho para caber corretamente
 
-# Configuração de fonte e cor
-fonte = cv2.FONT_HERSHEY_SIMPLEX
-cor_preta = (0, 0, 0)
-escala_fonte = 1.1
+# Inserir escudo na matriz (canto superior esquerdo)
+y_offset, x_offset = 420, 150  # ajuste de coordenadas
+for c in range(0, 3):
+    matriz[y_offset:y_offset+escudo.shape[0], x_offset:x_offset+escudo.shape[1], c] = \
+        escudo[:, :, c] * (escudo[:, :, 3]//255) + matriz[y_offset:y_offset+escudo.shape[0], x_offset:x_offset+escudo.shape[1], c] * (1 - escudo[:, :, 3]//255)
+
+# Texto de exemplo para campos
+font = cv2.FONT_HERSHEY_SIMPLEX
+cor = (0, 0, 0)
 espessura = 2
+escala = 1.3
 
-# Dados de exemplo (substitua futuramente por variáveis dinâmicas)
-estadio = "MetLife Stadium"
-competicao = "FIFA Club WC"
-odds = "2.44"
-stake = "R$ 100"
-mercado = "Match Odds"
-liquidez = "450K"
-horario = "16:00"
-resultado = "Aguardando"
+cv2.putText(matriz, 'MetLife Stadium', (380, 1280), font, escala, cor, espessura, cv2.LINE_AA)
+cv2.putText(matriz, 'FIFA Club WC', (380, 1400), font, escala, cor, espessura, cv2.LINE_AA)
+cv2.putText(matriz, '2.44', (380, 1530), font, escala, cor, espessura, cv2.LINE_AA)
+cv2.putText(matriz, 'R$ 100', (380, 1660), font, escala, cor, espessura, cv2.LINE_AA)
+cv2.putText(matriz, 'Match Odds', (380, 1790), font, escala, cor, espessura, cv2.LINE_AA)
+cv2.putText(matriz, '450K', (380, 1920), font, escala, cor, espessura, cv2.LINE_AA)
+cv2.putText(matriz, '16:00', (380, 2050), font, escala, cor, espessura, cv2.LINE_AA)
+cv2.putText(matriz, 'Aguardando', (380, 2180), font, escala, cor, espessura, cv2.LINE_AA)
 
-# Inserção dos textos nos locais (ajuste conforme necessário)
-cv2.putText(matriz, estadio, (90, 1335), fonte, escala_fonte, cor_preta, espessura, cv2.LINE_AA)
-cv2.putText(matriz, competicao, (90, 1460), fonte, escala_fonte, cor_preta, espessura, cv2.LINE_AA)
-cv2.putText(matriz, odds, (90, 1585), fonte, escala_fonte, cor_preta, espessura, cv2.LINE_AA)
-cv2.putText(matriz, stake, (90, 1710), fonte, escala_fonte, cor_preta, espessura, cv2.LINE_AA)
-cv2.putText(matriz, mercado, (90, 1835), fonte, escala_fonte, cor_preta, espessura, cv2.LINE_AA)
-cv2.putText(matriz, liquidez, (90, 1960), fonte, escala_fonte, cor_preta, espessura, cv2.LINE_AA)
-cv2.putText(matriz, horario, (90, 2085), fonte, escala_fonte, cor_preta, espessura, cv2.LINE_AA)
-cv2.putText(matriz, resultado, (90, 2210), fonte, escala_fonte, cor_preta, espessura, cv2.LINE_AA)
-
-# Salvar a imagem final no nome padronizado para envio ao Telegram
 cv2.imwrite(caminho_saida, matriz)
+logging.info(f"✅ Imagem gerada e salva como {caminho_saida}, pronta para envio ao Telegram.")
 
-print(f"✅ Imagem gerada e salva como '{caminho_saida}' pronta para envio ao Telegram.")
+# Enviar ao Telegram
+with open(caminho_saida, 'rb') as img:
+    bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=img)
+    logging.info("✅ Imagem enviada ao Telegram com sucesso.")
+
