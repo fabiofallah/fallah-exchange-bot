@@ -39,3 +39,4 @@ try:
     logger.info(f"✅ Imagem '{matriz_nome_drive}' enviada ao Telegram com sucesso.")
 except Exception as e:
     logger.error(f"❌ Erro ao enviar imagem ao Telegram: {e}")
+
