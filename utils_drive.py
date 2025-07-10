@@ -1,10 +1,3 @@
-# ========================
-# FALLAH EXCHANGE BOT AJUSTADO
-# Busca automática de imagens nas pastas (ENTRADA, RESULTADO, CORRESPONDENCIA, CONEXAO) do Google Drive
-# Busca escudos automaticamente nas pastas de escudos
-# Script para substituir o atual utils_drive.py
-# ========================
-
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
@@ -20,17 +13,16 @@ def baixar_arquivo_drive(nome_arquivo, tipo_operacao, destino):
 
         service = build('drive', 'v3', credentials=creds)
 
-        # Dicionário para mapear tipo de operação para o nome da pasta no Drive
         pasta_drive_map = {
-            "ENTRADA": 'ID_PASTA_ENTRADA',
-            "RESULTADO": 'ID_PASTA_RESULTADO',
-            "CORRESPONDENCIA": 'ID_PASTA_CORRESPONDENCIA',
-            "CONEXAO": 'ID_PASTA_CONEXAO',
-            "AFRICA": 'ID_PASTA_AFRICA',
-            "AMERICA": 'ID_PASTA_AMERICA',
-            "ASIA": 'ID_PASTA_ASIA',
-            "EUROPA": 'ID_PASTA_EUROPA',
-            "BANDEIRAS": 'ID_PASTA_BANDEIRAS'
+            "ENTRADA": os.environ.get('PASTA_ENTRADA_ID'),
+            "CORRESPONDENCIA": os.environ.get('PASTA_CORRESPONDENCIA_ID'),
+            "RESULTADO": os.environ.get('PASTA_RESULTADO_ID'),
+            "CONEXAO": os.environ.get('PASTA_CONEXAO_ID'),
+            "AFRICA": os.environ.get('PASTA_AFRICA_ID'),
+            "AMERICA": os.environ.get('PASTA_AMERICA_ID'),
+            "ASIA": os.environ.get('PASTA_ASIA_ID'),
+            "EUROPA": os.environ.get('PASTA_EUROPA_ID'),
+            "BANDEIRAS": os.environ.get('PASTA_BANDEIRAS_ID')
         }
 
         pasta_id = pasta_drive_map.get(tipo_operacao.upper())
@@ -38,6 +30,8 @@ def baixar_arquivo_drive(nome_arquivo, tipo_operacao, destino):
         if not pasta_id:
             logging.error(f"❌ Tipo de operação '{tipo_operacao}' não encontrado no mapeamento.")
             return None
+
+        logging.info(f"🔍 Buscando arquivo '{nome_arquivo}' na pasta '{tipo_operacao}' com ID: {pasta_id}")
 
         query = f"name='{nome_arquivo}' and '{pasta_id}' in parents and trashed = false"
         results = service.files().list(q=query, fields="files(id, name)").execute()
@@ -57,7 +51,7 @@ def baixar_arquivo_drive(nome_arquivo, tipo_operacao, destino):
             if status:
                 logging.info(f"⬇️ Download {int(status.progress() * 100)}% concluído.")
 
-        logging.info(f"✅ Arquivo '{nome_arquivo}' baixado para {destino}.")
+        logging.info(f"✅ Arquivo '{nome_arquivo}' baixado com sucesso para '{destino}'.")
         return destino
 
     except Exception as e:
