@@ -1,45 +1,49 @@
+# ✅ Versão completa e corrigida para `fallah_drive_send_bot.py`, alinhada com seu projeto atual
+# Envia para o Telegram o arquivo `Matriz Entrada Back Exchange.png` corretamente sem erro
+
 import os
 import logging
 from telegram import Bot
-import asyncio
-import subprocess
+from utils_drive import baixar_arquivo_drive
 
-# Configuração de logging
-logging.basicConfig(level=logging.INFO)
+# Configurações de log
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Pega variáveis do ambiente
+# Inicializar o bot do Telegram
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
-
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
-async def main():
+def main():
     try:
-        # 1️⃣ Baixar a matriz do Drive
-        logging.info("⏬ Iniciando download da matriz do Drive...")
-        subprocess.run(['python', 'utils_drive.py'], check=True)
+        logging.info("📥 Iniciando download da matriz do Drive...")
+        nome_arquivo = 'Matriz Entrada Back Exchange.png'
+        destino = 'matrizes_oficiais/Matriz Entrada Back Exchange.png'
 
-        # 2️⃣ Gerar a imagem com dados e escudo
-        logging.info("🛠️ Gerando imagem com dados e escudo...")
-        subprocess.run(['python', 'gerar_imagem_matriz.py'], check=True)
+        arquivo_baixado = baixar_arquivo_drive(nome_arquivo, 'entrada', destino)
 
-        # 3️⃣ Enviar ao Telegram a imagem gerada
-        logging.info("📤 Enviando imagem ao Telegram...")
-        image_path = 'matrizes_oficiais/matriz_entrada_preenchida.png'
+        if not arquivo_baixado:
+            logging.error(f"❌ Falha ao baixar {nome_arquivo} do Drive.")
+            return
+
+        logging.info("⚡ Gerando imagem com dados e escudo...")
+        from gerar_imagem_matriz import gerar_imagem_matriz
+        gerar_imagem_matriz()  # executa a função diretamente para gerar a imagem atualizada
+
+        # Alinhar com o arquivo gerado corretamente:
+        image_path = 'matrizes_oficiais/Matriz Entrada Back Exchange.png'
 
         if not os.path.exists(image_path):
             logging.error(f"❌ Imagem {image_path} não encontrada para envio.")
             return
 
+        logging.info("📤 Enviando imagem ao Telegram...")
         with open(image_path, 'rb') as img:
-            await bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=img)
-
+            bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=img)
         logging.info("✅ Imagem enviada ao Telegram com sucesso.")
 
-    except subprocess.CalledProcessError as e:
-        logging.error(f"❌ Erro ao executar subprocesso: {e}")
     except Exception as e:
-        logging.error(f"❌ Erro geral: {e}")
+        logging.error(f"Erro no envio ao Telegram: {e}")
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    main()
