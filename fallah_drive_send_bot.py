@@ -31,20 +31,22 @@ def preencher_matriz(matriz_path):
     # Texto no topo (branco)
     cv2.putText(img, "BACK - LAY", (250, 160), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 3, cv2.LINE_AA)
 
-    # Texto no quadro bege (preto)
+    # Alinhamento quadro bege
     dados = [estadio, competicao, odds, stake, mercado, liquidez, horario, resultado]
-    y_inicial = 480
-    y_salto = 82
+    
+    x_coluna = 250  # Ajuste horizontal para esquerda
+    y_inicial = 520 # Ajuste vertical inicial
+    y_salto = 85    # Espaçamento entre linhas
 
     for idx, dado in enumerate(dados):
-        posicao = (380, y_inicial + idx * y_salto)
+        posicao = (x_coluna, y_inicial + idx * y_salto)
         logger.info(f"Escrevendo '{dado}' em {posicao}")
         cv2.putText(
             img,
             dado,
             posicao,
             cv2.FONT_HERSHEY_SIMPLEX,
-            1.3,
+            1.2,
             (0, 0, 0),
             3,
             cv2.LINE_AA
@@ -57,7 +59,7 @@ def preencher_matriz(matriz_path):
 
 # Função principal
 async def main():
-    logger.info("Iniciando envio automático da matriz de ENTRADA com alinhamento corrigido...")
+    logger.info("Iniciando envio automático da matriz de ENTRADA com alinhamento refinado...")
 
     matriz_nome_drive = "Matriz Entrada Back Exchange.png"
     matriz_nome_local = "matriz_entrada_back_exchange.png"
@@ -81,3 +83,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
