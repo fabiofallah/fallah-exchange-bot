@@ -1,28 +1,33 @@
-import os
-import io
-import logging
-from googleapiclient.http import MediaIoBaseDownload
-from googleapiclient.discovery import build
-from google.oauth2 import service_account
+# utils_drive.py corrigido para pegar automaticamente os IDs corretos das variáveis de ambiente
 
-def baixar_arquivo_drive(nome_arquivo, pasta_id, destino):
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
+import io
+import os
+import logging
+
+def baixar_arquivo_drive(nome_arquivo, tipo_operacao, destino):
     try:
-        creds_dict = eval(os.environ['GOOGLE_CREDENTIALS_JSON'])
+        creds_json = os.environ['GOOGLE_CREDENTIALS_JSON']
+        creds_dict = eval(creds_json)
         creds = service_account.Credentials.from_service_account_info(creds_dict)
         service = build('drive', 'v3', credentials=creds)
 
-        # Cria a pasta de destino se não existir
-        pasta_destino = os.path.dirname(destino)
-        if not os.path.exists(pasta_destino):
-            os.makedirs(pasta_destino)
-            logging.info(f"📂 Pasta '{pasta_destino}' criada automaticamente.")
+        # Mapeamento dinâmico usando variáveis de ambiente
+        tipo_operacao_upper = tipo_operacao.upper()
+        pasta_id = os.getenv(f'PASTA_{tipo_operacao_upper}_ID')
+
+        if not pasta_id:
+            logging.error(f"❌ Tipo de operação '{tipo_operacao}' não possui variável de ambiente configurada.")
+            return None
 
         query = f"name='{nome_arquivo}' and '{pasta_id}' in parents and trashed = false"
         results = service.files().list(q=query, fields="files(id, name)").execute()
         items = results.get('files', [])
 
         if not items:
-            logging.error(f"❌ Arquivo '{nome_arquivo}' não encontrado na pasta de ID '{pasta_id}'.")
+            logging.error(f"❌ Arquivo '{nome_arquivo}' não encontrado na pasta do tipo '{tipo_operacao}'.")
             return None
 
         file_id = items[0]['id']
@@ -30,12 +35,13 @@ def baixar_arquivo_drive(nome_arquivo, pasta_id, destino):
         fh = io.FileIO(destino, 'wb')
         downloader = MediaIoBaseDownload(fh, request)
         done = False
+
         while not done:
             status, done = downloader.next_chunk()
             if status:
-                logging.info(f"⬇️ Download {int(status.progress() * 100)}% concluído.")
+                logging.info(f"⬇️ Download {int(status.progress() * 100)}% concluído para '{nome_arquivo}'.")
 
-        logging.info(f"✅ Arquivo '{nome_arquivo}' baixado com sucesso em '{destino}'.")
+        logging.info(f"✅ Arquivo '{nome_arquivo}' baixado com sucesso para '{destino}'.")
         return destino
 
     except Exception as e:
