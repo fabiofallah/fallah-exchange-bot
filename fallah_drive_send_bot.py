@@ -21,13 +21,12 @@ def preencher_matriz(matriz_path):
     draw = ImageDraw.Draw(img)
 
     try:
-        fonte = ImageFont.truetype("arial.ttf", 42)
-        logger.info("Fonte arial.ttf encontrada e utilizada.")
-    except:
+        fonte = ImageFont.truetype("DejaVuSans-Bold.ttf", 42)
+        logger.info("Fonte DejaVuSans-Bold.ttf encontrada e utilizada.")
+    except Exception as e:
+        logger.warning(f"Fonte DejaVuSans-Bold.ttf não encontrada. Usando fonte padrão. Erro: {e}")
         fonte = ImageFont.load_default()
-        logger.warning("Fonte arial.ttf não encontrada. Usando fonte padrão.")
 
-    # Dados para teste
     estadio = "MetLife Stadium"
     competicao = "FIFA Club WC"
     odds = "2.44"
@@ -46,18 +45,14 @@ def preencher_matriz(matriz_path):
     for idx, dado in enumerate(dados):
         posicao = (x_coluna, y_inicial + idx * y_salto)
         logger.info(f"Escrevendo '{dado}' em {posicao}")
-        draw.text(posicao, dado, font=fonte, fill="black")
+        draw.text(posicao, dado, font=fonte, fill="white")
 
     output_path = os.path.join(os.getcwd(), "matriz_entrada_preenchida.png")
     img.save(output_path, quality=95)
     logger.info(f"Imagem gerada e salva em: {output_path}")
 
-    # Verificação de pixel para confirmar alteração
     pixel = img.getpixel((310, 445))
     logger.info(f"Cor do pixel após escrita (310,445): {pixel}")
-
-    # Se estiver testando localmente:
-    # img.show()
 
     return output_path
 
