@@ -1,33 +1,74 @@
 import os
 import logging
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
+from google.oauth2.service_account import Credentials
 from telegram import Bot
-from utils_drive import baixar_arquivo_drive
+import asyncio
+import io
 
-# Configuração de logging
 logging.basicConfig(level=logging.INFO)
 
-# Variáveis de ambiente
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+async def enviar_foto_telegram(bot, chat_id, image_path):
+    with open(image_path, 'rb') as img:
+        await bot.send_photo(chat_id=chat_id, photo=img)
+    logging.info(f"✅ Imagem '{image_path}' enviada com sucesso ao Telegram.")
 
-def main():
+async def main():
     try:
+        # Configurações
+        TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+        TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
+        if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+            logging.error("❌ TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurados no Railway.")
+            return
+
         bot = Bot(token=TELEGRAM_BOT_TOKEN)
-        matriz_nome_drive = 'Matriz Entrada Back Exchange.png'
-        tipo_operacao = 'ENTRADA'
-        caminho_matriz = os.path.join('matrizes_oficiais', matriz_nome_drive)
 
-        caminho_baixado = baixar_arquivo_drive(matriz_nome_drive, tipo_operacao, caminho_matriz)
+        # Baixar arquivo do Drive
+        creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
+        if creds_json is None:
+            logging.error("❌ Credenciais do Google não encontradas nas variáveis de ambiente.")
+            return
 
-        if caminho_baixado:
-            with open(caminho_baixado, 'rb') as img:
-                bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=img)
-            logging.info(f"✅ Imagem '{matriz_nome_drive}' enviada com sucesso ao Telegram.")
-        else:
-            logging.error("❌ Falha ao baixar ou encontrar a matriz para envio.")
+        creds = Credentials.from_service_account_info(eval(creds_json))
+        service = build('drive', 'v3', credentials=creds)
+
+        pasta_id = os.environ.get('PASTA_ENTRADA_ID')
+        if pasta_id is None:
+            logging.error("❌ ID da pasta de entrada não configurado no Railway.")
+            return
+
+        nome_arquivo = 'Matriz Entrada Back Exchange.png'
+        destino = 'matrizes_oficiais/Matriz Entrada Back Exchange.png'
+
+        query = f"name='{nome_arquivo}' and '{pasta_id}' in parents and trashed=false"
+        results = service.files().list(q=query, fields="files(id, name)").execute()
+        items = results.get('files', [])
+
+        if not items:
+            logging.error(f"❌ Arquivo '{nome_arquivo}' não encontrado no Drive.")
+            return
+
+        file_id = items[0]['id']
+        request = service.files().get_media(fileId=file_id)
+
+        os.makedirs(os.path.dirname(destino), exist_ok=True)
+
+        with io.FileIO(destino, 'wb') as fh:
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while not done:
+                status, done = downloader.next_chunk()
+                if status:
+                    logging.info(f"📥 Download {int(status.progress() * 100)}% concluído.")
+        logging.info(f"✅ Arquivo '{nome_arquivo}' baixado e salvo em '{destino}'.")
+
+        # Enviar ao Telegram de forma assíncrona
+        await enviar_foto_telegram(bot, TELEGRAM_CHAT_ID, destino)
 
     except Exception as e:
-        logging.error(f"❌ Erro ao enviar imagem ao Telegram: {e}")
+        logging.error(f"❌ Erro no processo: {e}")
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
