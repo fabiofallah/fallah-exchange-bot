@@ -1,10 +1,3 @@
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
-import io
-import os
-import logging
-
 def baixar_arquivo_drive(nome_arquivo, tipo_operacao, destino):
     try:
         creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
@@ -39,6 +32,13 @@ def baixar_arquivo_drive(nome_arquivo, tipo_operacao, destino):
             return None
 
         file_id = items[0]['id']
+
+        # 🚩 CRIA A PASTA AUTOMATICAMENTE SE NÃO EXISTIR
+        pasta_destino = os.path.dirname(destino)
+        if pasta_destino and not os.path.exists(pasta_destino):
+            os.makedirs(pasta_destino, exist_ok=True)
+            logging.info(f"📂 Pasta '{pasta_destino}' criada automaticamente.")
+
         request = service.files().get_media(fileId=file_id)
         fh = io.FileIO(destino, 'wb')
         downloader = MediaIoBaseDownload(fh, request)
