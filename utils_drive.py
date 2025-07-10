@@ -9,7 +9,7 @@ def baixar_arquivo_drive(nome_arquivo, tipo_operacao, destino):
     try:
         creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
         if creds_json is None:
-            logging.error("Credenciais do Google não encontradas nas variáveis de ambiente.")
+            logging.error("❌ Credenciais do Google não encontradas nas variáveis de ambiente.")
             return False
 
         creds = Credentials.from_service_account_info(eval(creds_json))
@@ -17,7 +17,7 @@ def baixar_arquivo_drive(nome_arquivo, tipo_operacao, destino):
 
         pasta_id = os.environ.get(f'PASTA_{tipo_operacao.upper()}_ID')
         if pasta_id is None:
-            logging.error(f"ID da pasta para {tipo_operacao} não encontrada nas variáveis de ambiente.")
+            logging.error(f"❌ ID da pasta para {tipo_operacao} não encontrada nas variáveis de ambiente.")
             return False
 
         query = f"name='{nome_arquivo}' and '{pasta_id}' in parents and trashed=false"
@@ -25,7 +25,7 @@ def baixar_arquivo_drive(nome_arquivo, tipo_operacao, destino):
         items = results.get('files', [])
 
         if not items:
-            logging.error(f"Arquivo {nome_arquivo} não encontrado na pasta do Drive.")
+            logging.error(f"❌ Arquivo {nome_arquivo} não encontrado na pasta do Drive.")
             return False
 
         file_id = items[0]['id']
@@ -40,27 +40,16 @@ def baixar_arquivo_drive(nome_arquivo, tipo_operacao, destino):
             while not done:
                 status, done = downloader.next_chunk()
                 if status:
-                    logging.info(f"Download {int(status.progress() * 100)}% concluído.")
+                    logging.info(f"⬇️ Download {int(status.progress() * 100)}% concluído.")
 
-        logging.info(f"Arquivo '{nome_arquivo}' baixado e salvo em '{destino}'.")
+        logging.info(f"✅ Arquivo '{nome_arquivo}' baixado e salvo em '{destino}'.")
 
-        # 🚩 Verificação após download:
-        if os.path.isdir(destino):
-            arquivos_na_pasta = os.listdir(destino)
-            arquivos_validos = [arq for arq in arquivos_na_pasta if os.path.isfile(os.path.join(destino, arq))]
-            if arquivos_validos:
-                destino_final = os.path.join(destino, arquivos_validos[0])
-                logging.info(f"Arquivo válido encontrado dentro da pasta: {destino_final}")
-                return destino_final
-            else:
-                logging.error(f"Nenhum arquivo válido encontrado dentro de '{destino}'.")
-                return False
-        elif os.path.isfile(destino):
+        if os.path.isfile(destino):
             return destino
         else:
-            logging.error(f"O caminho '{destino}' não é um arquivo válido para envio.")
+            logging.error(f"❌ O caminho '{destino}' não é um arquivo válido para envio.")
             return False
 
     except Exception as e:
-        logging.error(f"Erro ao baixar arquivo do Drive: {e}")
+        logging.error(f"❌ Erro ao baixar arquivo do Drive: {e}")
         return False
