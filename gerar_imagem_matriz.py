@@ -1,55 +1,57 @@
+import cv2
+import numpy as np
 import os
-from PIL import Image, ImageDraw, ImageFont
-import logging
 
-# Configuração de logging
-logging.basicConfig(level=logging.INFO)
+# Caminho da matriz buscada dinamicamente e salva pelo bot
+pasta_matriz = 'matrizes_oficiais'
+matriz_nome_drive = 'Matriz Entrada Back Exchange.png'  # Nome como chega do Drive
+caminho_matriz = os.path.join(pasta_matriz, matriz_nome_drive)
 
-def gerar_imagem():
-    try:
-        # Cria imagem branca
-        largura, altura = 1080, 1920
-        img = Image.new('RGB', (largura, altura), color='white')
-        draw = ImageDraw.Draw(img)
+# Nome de saída padronizado para envio ao Telegram
+saida_nome = 'matriz_entrada_preenchida.png'
+caminho_saida = os.path.join(pasta_matriz, saida_nome)
 
-        # Fonte (certifique-se que a fonte existe no ambiente)
-        try:
-            fonte = ImageFont.truetype("arial.ttf", 60)
-        except:
-            fonte = ImageFont.load_default()
+# Verifica se o arquivo existe antes de prosseguir
+if not os.path.exists(caminho_matriz):
+    raise FileNotFoundError(f"❌ Arquivo '{caminho_matriz}' não encontrado. Verifique o processo de download do Drive.")
 
-        # Dados de exemplo (substitua por dados dinâmicos futuramente)
-        dados = {
-            "Estádio": "MetLife Stadium",
-            "Competição": "FIFA Club World Cup",
-            "Odds": "2.44",
-            "Stake": "R$ 100",
-            "Mercado": "Match Odds",
-            "Liquidez": "450K",
-            "Horário": "16:00",
-            "Resultado": "Aguardando"
-        }
+# Carregar a imagem da matriz
+matriz = cv2.imread(caminho_matriz)
 
-        # Posições aproximadas
-        x, y = 100, 200
-        espaco = 100
+# Ajustar a largura para 1080 mantendo a proporção para Telegram
+altura_original, largura_original = matriz.shape[:2]
+escala = 1080 / largura_original
+nova_largura = 1080
+nova_altura = int(altura_original * escala)
+matriz = cv2.resize(matriz, (nova_largura, nova_altura))
 
-        for chave, valor in dados.items():
-            texto = f"{chave}: {valor}"
-            draw.text((x, y), texto, font=fonte, fill='black')
-            y += espaco
+# Configuração de fonte e cor
+fonte = cv2.FONT_HERSHEY_SIMPLEX
+cor_preta = (0, 0, 0)
+escala_fonte = 1.1
+espessura = 2
 
-        # Nome do arquivo e salvamento
-        pasta_destino = 'matrizes_oficiais'
-        if not os.path.exists(pasta_destino):
-            os.makedirs(pasta_destino)
+# Dados de exemplo (substitua futuramente por variáveis dinâmicas)
+estadio = "MetLife Stadium"
+competicao = "FIFA Club WC"
+odds = "2.44"
+stake = "R$ 100"
+mercado = "Match Odds"
+liquidez = "450K"
+horario = "16:00"
+resultado = "Aguardando"
 
-        caminho_arquivo = os.path.join(pasta_destino, 'Matriz Entrada Back Exchange.png')
-        img.save(caminho_arquivo)
-        logging.info(f"✅ Imagem gerada e salva em '{caminho_arquivo}'")
+# Inserção dos textos nos locais (ajuste conforme necessário)
+cv2.putText(matriz, estadio, (90, 1335), fonte, escala_fonte, cor_preta, espessura, cv2.LINE_AA)
+cv2.putText(matriz, competicao, (90, 1460), fonte, escala_fonte, cor_preta, espessura, cv2.LINE_AA)
+cv2.putText(matriz, odds, (90, 1585), fonte, escala_fonte, cor_preta, espessura, cv2.LINE_AA)
+cv2.putText(matriz, stake, (90, 1710), fonte, escala_fonte, cor_preta, espessura, cv2.LINE_AA)
+cv2.putText(matriz, mercado, (90, 1835), fonte, escala_fonte, cor_preta, espessura, cv2.LINE_AA)
+cv2.putText(matriz, liquidez, (90, 1960), fonte, escala_fonte, cor_preta, espessura, cv2.LINE_AA)
+cv2.putText(matriz, horario, (90, 2085), fonte, escala_fonte, cor_preta, espessura, cv2.LINE_AA)
+cv2.putText(matriz, resultado, (90, 2210), fonte, escala_fonte, cor_preta, espessura, cv2.LINE_AA)
 
-    except Exception as e:
-        logging.error(f"❌ Erro ao gerar imagem: {e}")
+# Salvar a imagem final no nome padronizado para envio ao Telegram
+cv2.imwrite(caminho_saida, matriz)
 
-if __name__ == '__main__':
-    gerar_imagem()
+print(f"✅ Imagem gerada e salva como '{caminho_saida}' pronta para envio ao Telegram.")
