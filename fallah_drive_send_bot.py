@@ -22,12 +22,14 @@ def preencher_matriz(matriz_path):
 
     try:
         fonte = ImageFont.truetype("arial.ttf", 42)
+        logger.info("Fonte arial.ttf encontrada e utilizada.")
     except:
         fonte = ImageFont.load_default()
         logger.warning("Fonte arial.ttf não encontrada. Usando fonte padrão.")
 
+    # Dados para teste
     estadio = "MetLife Stadium"
-    competicao = "FIFA Club World Cup"
+    competicao = "FIFA Club WC"
     odds = "2.44"
     stake = "R$ 100"
     mercado = "Match Odds"
@@ -39,18 +41,24 @@ def preencher_matriz(matriz_path):
     y_inicial = 435
     y_salto = 85
 
-    draw.text((x_coluna, y_inicial + 0 * y_salto), f"{estadio}", font=fonte, fill="black")
-    draw.text((x_coluna, y_inicial + 1 * y_salto), f"{competicao}", font=fonte, fill="black")
-    draw.text((x_coluna, y_inicial + 2 * y_salto), f"{odds}", font=fonte, fill="black")
-    draw.text((x_coluna, y_inicial + 3 * y_salto), f"{stake}", font=fonte, fill="black")
-    draw.text((x_coluna, y_inicial + 4 * y_salto), f"{mercado}", font=fonte, fill="black")
-    draw.text((x_coluna, y_inicial + 5 * y_salto), f"{liquidez}", font=fonte, fill="black")
-    draw.text((x_coluna, y_inicial + 6 * y_salto), f"{horario}", font=fonte, fill="black")
-    draw.text((x_coluna, y_inicial + 7 * y_salto), f"{resultado}", font=fonte, fill="black")
+    dados = [estadio, competicao, odds, stake, mercado, liquidez, horario, resultado]
+
+    for idx, dado in enumerate(dados):
+        posicao = (x_coluna, y_inicial + idx * y_salto)
+        logger.info(f"Escrevendo '{dado}' em {posicao}")
+        draw.text(posicao, dado, font=fonte, fill="black")
 
     output_path = os.path.join(os.getcwd(), "matriz_entrada_preenchida.png")
     img.save(output_path, quality=95)
-    logger.info(f"Imagem da matriz preenchida gerada e salva em: {output_path}")
+    logger.info(f"Imagem gerada e salva em: {output_path}")
+
+    # Verificação de pixel para confirmar alteração
+    pixel = img.getpixel((310, 445))
+    logger.info(f"Cor do pixel após escrita (310,445): {pixel}")
+
+    # Se estiver testando localmente:
+    # img.show()
+
     return output_path
 
 # Função principal
