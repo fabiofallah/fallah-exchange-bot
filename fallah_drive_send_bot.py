@@ -1,56 +1,33 @@
 import os
 import logging
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
-from google.oauth2.service_account import Credentials
-import io
+from telegram import Bot
+from utils_drive import baixar_arquivo_drive
 
-def baixar_arquivo_drive(nome_arquivo, tipo_operacao, destino):
+# Configuração de logging
+logging.basicConfig(level=logging.INFO)
+
+# Variáveis de ambiente
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+
+def main():
     try:
-        creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
-        if creds_json is None:
-            logging.error("Credenciais do Google não encontradas nas variáveis de ambiente.")
-            return False
+        bot = Bot(token=TELEGRAM_BOT_TOKEN)
+        matriz_nome_drive = 'Matriz Entrada Back Exchange.png'
+        tipo_operacao = 'ENTRADA'
+        caminho_matriz = os.path.join('matrizes_oficiais', matriz_nome_drive)
 
-        creds = Credentials.from_service_account_info(eval(creds_json))
-        service = build('drive', 'v3', credentials=creds)
+        caminho_baixado = baixar_arquivo_drive(matriz_nome_drive, tipo_operacao, caminho_matriz)
 
-        pasta_id = os.environ.get(f'PASTA_{tipo_operacao.upper()}_ID')
-        if pasta_id is None:
-            logging.error(f"ID da pasta para {tipo_operacao} não encontrada nas variáveis de ambiente.")
-            return False
-
-        query = f"name='{nome_arquivo}' and '{pasta_id}' in parents and trashed=false"
-        results = service.files().list(q=query, fields="files(id, name)").execute()
-        items = results.get('files', [])
-
-        if not items:
-            logging.error(f"Arquivo {nome_arquivo} não encontrado na pasta do Drive.")
-            return False
-
-        file_id = items[0]['id']
-        request = service.files().get_media(fileId=file_id)
-
-        if not os.path.exists(os.path.dirname(destino)):
-            os.makedirs(os.path.dirname(destino))
-
-        with io.FileIO(destino, 'wb') as fh:
-            downloader = MediaIoBaseDownload(fh, request)
-            done = False
-            while not done:
-                status, done = downloader.next_chunk()
-                if status:
-                    logging.info(f"Download {int(status.progress() * 100)}% concluído.")
-
-        logging.info(f"Arquivo '{nome_arquivo}' baixado e salvo em '{destino}'.")
-
-        if os.path.isfile(destino):
-            logging.info(f"Arquivo salvo é válido e pronto para envio: {destino}")
-            return destino
+        if caminho_baixado:
+            with open(caminho_baixado, 'rb') as img:
+                bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=img)
+            logging.info(f"✅ Imagem '{matriz_nome_drive}' enviada com sucesso ao Telegram.")
         else:
-            logging.error(f"O caminho '{destino}' não é um arquivo válido para envio.")
-            return False
+            logging.error("❌ Falha ao baixar ou encontrar a matriz para envio.")
 
     except Exception as e:
-        logging.error(f"Erro ao baixar arquivo do Drive: {e}")
-        return False
+        logging.error(f"❌ Erro ao enviar imagem ao Telegram: {e}")
+
+if __name__ == '__main__':
+    main()
