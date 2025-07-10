@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 
 # Carregar a imagem da matriz original (sem compressão)
-matriz = cv2.imread('Matriz Entrada Back Exchange.png')
+matriz = cv2.imread('/app/matrizes_oficiais/Matriz Entrada Back Exchange.png')
 
 # Ajustar a largura para 1080 mantendo a proporção (Telegram)
 altura_original, largura_original = matriz.shape[:2]
