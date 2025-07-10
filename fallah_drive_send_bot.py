@@ -19,7 +19,7 @@ def preencher_matriz(matriz_path):
     logger.info(f"Abrindo matriz com OpenCV: {matriz_path}")
     img = cv2.imread(matriz_path)
 
-    # Dados reais
+    # Dados reais de exemplo
     estadio = "MetLife Stadium"
     competicao = "FIFA Club WC"
     odds = "2.44"
@@ -29,13 +29,10 @@ def preencher_matriz(matriz_path):
     horario = "16:00"
     resultado = "Aguardando"
 
-    # Texto no topo
-    cv2.putText(img, "BACK - LAY", (250, 160), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 3, cv2.LINE_AA)
-
-    # Dados e suas posições
+    # Lista dos dados
     dados = [estadio, competicao, odds, stake, mercado, liquidez, horario, resultado]
-    y_positions = [540, 625, 710, 795, 880, 965, 1050, 1135]  # alinhado com cada emoji
-
+    # Posições verticais alinhadas com os emojis
+    y_positions = [540, 625, 710, 795, 880, 965, 1050, 1135]
     x_coluna = 380  # alinhamento horizontal consistente
 
     for idx, dado in enumerate(dados):
@@ -59,7 +56,7 @@ def preencher_matriz(matriz_path):
 
 # Função principal
 async def main():
-    logger.info("Iniciando envio automático da matriz de ENTRADA com alinhamento refinado...")
+    logger.info("Iniciando envio automático da matriz de ENTRADA refinada, sem texto extra no topo...")
 
     matriz_nome_drive = "Matriz Entrada Back Exchange.png"
     matriz_nome_local = "matriz_entrada_back_exchange.png"
