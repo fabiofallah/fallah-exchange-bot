@@ -1,48 +1,37 @@
 import os
-import asyncio
-from sofascore_wrapper.api import SofascoreAPI
+import re
 from collections import defaultdict
 
-ESCUDOS_FOLDER = 'escudos'  # pasta com todos os escudos
+ESCUDOS_DIR = os.path.join(os.path.dirname(__file__), "ESCUDOS")
 
-async def buscar_pais(time: str) -> str:
-    api = SofascoreAPI()
-    search = await api.search_all(time)
-    await api.close()
-    if search and search.get('results'):
-        entidade = search['results'][0]['entity']
-        if entidade.get('team'):
-            return entidade['team'].get('slug', '').split('/')[-1]
-    return ''
+def normalizar(nome):
+    nome = nome.lower()
+    nome = re.sub(r'[^a-z0-9]', '', nome)
+    return nome
 
 def mapear_escudos():
-    arquivos = os.listdir(ESCUDOS_FOLDER)
-    base_map = defaultdict(list)
-    for f in arquivos:
-        nome = f.rsplit('.', 1)[0]
-        base_map[nome].append(f)
+    if not os.path.isdir(ESCUDOS_DIR):
+        print(f"❌ Pasta não encontrada: {ESCUDOS_DIR}")
+        return
 
-    duplicates = {k:v for k,v in base_map.items() if len(v)>1}
-    simples = {k:v[0] for k,v in base_map.items() if len(v)==1}
+    grupos = defaultdict(list)
 
-    return simples, duplicates
+    for f in os.listdir(ESCUDOS_DIR):
+        if not (f.lower().endswith(".png") or f.lower().endswith(".jpg")):
+            continue
+        nome = os.path.splitext(f)[0]
+        key = normalizar(nome)
+        grupos[key].append(f)
 
-async def escolher_por_pais(duplicates):
-    final = {}
-    for nome, files in duplicates.items():
-        pais = await buscar_pais(nome)
-        match = [f for f in files if pais.lower() in f.lower()]
-        final[nome] = match[0] if match else files[0]
-    return final
+    with open("escudos_mapeados.txt", "w", encoding="utf-8") as out:
+        for key in sorted(grupos.keys()):
+            nomes = grupos[key]
+            if len(nomes) > 1:
+                out.write(f"[DUP] {key}: {nomes}\n")
+            else:
+                out.write(f"{nomes[0]}\n")
 
-def main():
-    simples, duplicates = mapear_escudos()
-    resultado = dict(simples)
-    if duplicates:
-        escolhidos = asyncio.run(escolher_por_pais(duplicates))
-        resultado.update(escolhidos)
-    # Imprima para debug ou retorne
-    print("Mapeamento final:", resultado)
+    print("✅ Arquivo gerado: escudos_mapeados.txt")
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    mapear_escudos()
