@@ -1,75 +1,51 @@
+# gerar_imagem_matriz.py
+
 import os
-import cv2
-import numpy as np
-from telegram import Bot
-import logging
+import sys
+from PIL import Image
 
-logging.basicConfig(level=logging.INFO)
+ESCUDOS_DIR = os.path.join(os.path.dirname(__file__), 'escudos_folder')
+PLACEHOLDER = os.path.join(ESCUDOS_DIR, 'placeholder.png')  # icone default
 
-# Configurações
-TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
-bot = Bot(token=TELEGRAM_BOT_TOKEN)
+def achar_escudo(nome_time):
+    candidato = f"{nome_time}.png"
+    caminho = os.path.join(ESCUDOS_DIR, candidato)
+    if os.path.isfile(caminho):
+        return caminho
+    # fallback país: assume formato "nome_time (país).png"
+    for arq in os.listdir(ESCUDOS_DIR):
+        if arq.lower().startswith(nome_time.lower() + " (") and arq.lower().endswith(").png"):
+            return os.path.join(ESCUDOS_DIR, arq)
+    return PLACEHOLDER
 
-# Caminhos
-pasta_matriz = 'matrizes_oficiais'
-nome_arquivo_matriz = 'Matriz Entrada Back Exchange.png'
-caminho_matriz = os.path.join(pasta_matriz, nome_arquivo_matriz)
+def gerar_matriz(lista_times, cols, tamanho=(64,64), espacamento=10, cor_fundo=(255,255,255)):
+    linhas = (len(lista_times) + cols - 1) // cols
+    largura = cols * tamanho[0] + (cols + 1) * espacamento
+    altura = linhas * tamanho[1] + (linhas + 1) * espacamento
 
-# Nome do time que está sendo usado como base
-nome_time = "time_teste"  # substitua dinamicamente no futuro
+    img = Image.new('RGB', (largura, altura), cor_fundo)
 
-# Caminho atualizado da pasta de escudos do Google Drive
-pasta_escudos = 'Fallah_Exchange_Bets_PRÓ/Escudos'
-nome_arquivo_escudo = f"{nome_time}.png"
-caminho_escudo = os.path.join(pasta_escudos, nome_arquivo_escudo)
+    for idx, time in enumerate(lista_times):
+        caminho = achar_escudo(time)
+        escudo = Image.open(caminho).convert('RGBA').resize(tamanho, Image.ANTIALIAS)
+        x = espacamento + (idx % cols) * (tamanho[0] + espacamento)
+        y = espacamento + (idx // cols) * (tamanho[1] + espacamento)
+        img.paste(escudo, (x, y), escudo)
 
-caminho_saida = os.path.join(pasta_matriz, 'matriz_entrada_preenchida.png')
+    return img
 
-# Verificação de existência
-if not os.path.exists(caminho_matriz):
-    logging.error(f"❌ Matriz não encontrada em {caminho_matriz}")
-    exit()
+if __name__ == '__main__':
+    # usage: python gerar_imagem_matriz.py times.txt output.png [cols]
+    if len(sys.argv) < 3:
+        print("Uso: python gerar_imagem_matriz.py lista_times.txt matriz_saida.png [colunas]")
+        sys.exit(1)
 
-if not os.path.exists(caminho_escudo):
-    logging.error(f"❌ Escudo não encontrado em {caminho_escudo}")
-    exit()
+    lista_arquivo = sys.argv[1]
+    saida = sys.argv[2]
+    colunas = int(sys.argv[3]) if len(sys.argv) > 3 else 5
 
-# Carregar matriz
-matriz = cv2.imread(caminho_matriz)
-altura_matriz, largura_matriz = matriz.shape[:2]
+    with open(lista_arquivo, encoding='utf-8') as f:
+        times = [linha.strip() for linha in f if linha.strip()]
 
-# Carregar escudo
-escudo = cv2.imread(caminho_escudo, cv2.IMREAD_UNCHANGED)
-escudo = cv2.resize(escudo, (180, 180))  # ajustar o tamanho do escudo
-
-# Inserir escudo na matriz
-y_offset, x_offset = 420, 150
-for c in range(0, 3):
-    matriz[y_offset:y_offset+escudo.shape[0], x_offset:x_offset+escudo.shape[1], c] = \
-        escudo[:, :, c] * (escudo[:, :, 3]/255.0) + \
-        matriz[y_offset:y_offset+escudo.shape[0], x_offset:x_offset+escudo.shape[1], c] * (1.0 - escudo[:, :, 3]/255.0)
-
-# Texto exemplo (pode adaptar conforme desejado)
-font = cv2.FONT_HERSHEY_SIMPLEX
-cor = (0, 0, 0)
-espessura = 2
-escala = 1.3
-
-cv2.putText(matriz, 'MetLife Stadium', (380, 1280), font, escala, cor, espessura, cv2.LINE_AA)
-cv2.putText(matriz, 'FIFA Club WC', (380, 1400), font, escala, cor, espessura, cv2.LINE_AA)
-cv2.putText(matriz, '2.44', (380, 1530), font, escala, cor, espessura, cv2.LINE_AA)
-cv2.putText(matriz, 'R$ 100', (380, 1660), font, escala, cor, espessura, cv2.LINE_AA)
-cv2.putText(matriz, 'Match Odds', (380, 1790), font, escala, cor, espessura, cv2.LINE_AA)
-cv2.putText(matriz, '450K', (380, 1920), font, escala, cor, espessura, cv2.LINE_AA)
-cv2.putText(matriz, '16:00', (380, 2050), font, escala, cor, espessura, cv2.LINE_AA)
-cv2.putText(matriz, 'Aguardando', (380, 2180), font, escala, cor, espessura, cv2.LINE_AA)
-
-# Salvar imagem final
-cv2.imwrite(caminho_saida, matriz)
-logging.info(f"✅ Imagem gerada e salva como {caminho_saida}, pronta para envio ao Telegram.")
-
-# Enviar imagem ao Telegram
-with open(caminho_saida, 'rb') as img:
-    bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=img)
-    logging.info("✅ Imagem enviada ao Telegram com sucesso.")
+    matriz = gerar_matriz(times, cols=colunas)
+    matriz.save(saida)
