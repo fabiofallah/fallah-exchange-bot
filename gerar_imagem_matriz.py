@@ -4,22 +4,26 @@ import os
 import sys
 from PIL import Image
 
-ESCUDOS_DIR = os.path.join(os.path.dirname(__file__), 'escudos_folder')
-PLACEHOLDER = os.path.join(ESCUDOS_DIR, 'placeholder.png')  # icone default
+# --- CONFIGURAÇÕES ---
+BASE_DIR = os.path.dirname(__file__)
+ESCUDOS_DIR = os.path.join(BASE_DIR, 'escudos_folder')
+PLACEHOLDER = os.path.join(ESCUDOS_DIR, 'placeholder.png')
 
 def achar_escudo(nome_time):
-    candidato = f"{nome_time}.png"
-    caminho = os.path.join(ESCUDOS_DIR, candidato)
+    nome = nome_time.strip()
+    caminho = os.path.join(ESCUDOS_DIR, f"{nome}.png")
     if os.path.isfile(caminho):
         return caminho
-    # fallback país: assume formato "nome_time (país).png"
+    nome_lower = nome.lower()
     for arq in os.listdir(ESCUDOS_DIR):
-        if arq.lower().startswith(nome_time.lower() + " (") and arq.lower().endswith(").png"):
+        n = arq.lower()
+        if n.startswith(nome_lower + " (") and n.endswith(").png"):
             return os.path.join(ESCUDOS_DIR, arq)
     return PLACEHOLDER
 
-def gerar_matriz(lista_times, cols, tamanho=(64,64), espacamento=10, cor_fundo=(255,255,255)):
-    linhas = (len(lista_times) + cols - 1) // cols
+def gerar_matriz(lista_times, cols, tamanho=(64, 64), espacamento=10, cor_fundo=(255,255,255)):
+    total = len(lista_times)
+    linhas = (total + cols - 1) // cols
     largura = cols * tamanho[0] + (cols + 1) * espacamento
     altura = linhas * tamanho[1] + (linhas + 1) * espacamento
 
@@ -34,8 +38,7 @@ def gerar_matriz(lista_times, cols, tamanho=(64,64), espacamento=10, cor_fundo=(
 
     return img
 
-if __name__ == '__main__':
-    # usage: python gerar_imagem_matriz.py times.txt output.png [cols]
+def main():
     if len(sys.argv) < 3:
         print("Uso: python gerar_imagem_matriz.py lista_times.txt matriz_saida.png [colunas]")
         sys.exit(1)
@@ -49,3 +52,7 @@ if __name__ == '__main__':
 
     matriz = gerar_matriz(times, cols=colunas)
     matriz.save(saida)
+    print(f"Matriz salva em '{saida}'")
+
+if __name__ == '__main__':
+    main()
