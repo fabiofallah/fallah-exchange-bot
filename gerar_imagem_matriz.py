@@ -21,31 +21,32 @@ def achar_escudo(nome_time):
             return os.path.join(ESCUDOS_DIR, arq)
     return PLACEHOLDER
 
-def gerar_matriz(lista_times, cols, tamanho=(64, 64), espacamento=10, cor_fundo=(255,255,255)):
+def gerar_matriz(lista_times, cols=5, tamanho=(64, 64), esp=10, cor_fundo=(255,255,255)):
     total = len(lista_times)
     linhas = (total + cols - 1) // cols
-    largura = cols * tamanho[0] + (cols + 1) * espacamento
-    altura = linhas * tamanho[1] + (linhas + 1) * espacamento
+    largura = cols * tamanho[0] + (cols + 1) * esp
+    altura = linhas * tamanho[1] + (linhas + 1) * esp
 
     img = Image.new('RGB', (largura, altura), cor_fundo)
-
     for idx, time in enumerate(lista_times):
-        caminho = achar_escudo(time)
-        escudo = Image.open(caminho).convert('RGBA').resize(tamanho, Image.ANTIALIAS)
-        x = espacamento + (idx % cols) * (tamanho[0] + espacamento)
-        y = espacamento + (idx // cols) * (tamanho[1] + espacamento)
+        escudo_caminho = achar_escudo(time)
+        escudo = Image.open(escudo_caminho).convert('RGBA').resize(tamanho, Image.ANTIALIAS)
+        x = esp + (idx % cols) * (tamanho[0] + esp)
+        y = esp + (idx // cols) * (tamanho[1] + esp)
         img.paste(escudo, (x, y), escudo)
 
     return img
 
 def main():
     if len(sys.argv) < 3:
-        print("Uso: python gerar_imagem_matriz.py lista_times.txt matriz_saida.png [colunas]")
+        print("Uso: python gerar_imagem_matriz.py lista_times.txt matriz_entrada_preenchida.png [colunas]")
         sys.exit(1)
 
     lista_arquivo = sys.argv[1]
-    saida = sys.argv[2]
+    saida = os.path.join(BASE_DIR, 'matrizes_oficiais', 'matriz_entrada_preenchida.png')
     colunas = int(sys.argv[3]) if len(sys.argv) > 3 else 5
+
+    os.makedirs(os.path.dirname(saida), exist_ok=True)
 
     with open(lista_arquivo, encoding='utf-8') as f:
         times = [linha.strip() for linha in f if linha.strip()]
