@@ -1,10 +1,11 @@
+# mapear_escudos.py
 import os
 from collections import defaultdict
 
-# Nome da pasta no projeto onde estão os escudos (ajuste conforme necessário)
-PASTA_ESCUDOS = "escudos"
+# Insira o nome exato da sua pasta de escudos (conforme no Drive)
+PASTA_ESCUDOS = "escudos_folder"
 
-# Mapeia os nomes dos arquivos sem a extensão
+# Mapeia os nomes dos arquivos sem extensão
 nomes_escudos = defaultdict(list)
 
 for nome_arquivo in os.listdir(PASTA_ESCUDOS):
@@ -12,7 +13,7 @@ for nome_arquivo in os.listdir(PASTA_ESCUDOS):
         nome_base = os.path.splitext(nome_arquivo)[0]
         nomes_escudos[nome_base].append(nome_arquivo)
 
-# Cria um relatório dos escudos com nomes repetidos
+# Relatório de duplicados
 print("📋 Relatório de escudos com nomes repetidos:\n")
 for nome_base, arquivos in nomes_escudos.items():
     if len(arquivos) > 1:
