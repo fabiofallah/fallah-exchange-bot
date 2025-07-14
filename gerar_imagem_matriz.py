@@ -15,13 +15,22 @@ bot = Bot(token=TELEGRAM_BOT_TOKEN)
 pasta_matriz = 'matrizes_oficiais'
 nome_arquivo_matriz = 'Matriz Entrada Back Exchange.png'
 caminho_matriz = os.path.join(pasta_matriz, nome_arquivo_matriz)
-caminho_escudo = 'escudos/time_teste.png'  # ajuste para o nome do escudo desejado
+
+# Nome do time que está sendo usado como base
+nome_time = "time_teste"  # substitua dinamicamente no futuro
+
+# Caminho atualizado da pasta de escudos do Google Drive
+pasta_escudos = 'Fallah_Exchange_Bets_PRÓ/Escudos'
+nome_arquivo_escudo = f"{nome_time}.png"
+caminho_escudo = os.path.join(pasta_escudos, nome_arquivo_escudo)
+
 caminho_saida = os.path.join(pasta_matriz, 'matriz_entrada_preenchida.png')
 
 # Verificação de existência
 if not os.path.exists(caminho_matriz):
     logging.error(f"❌ Matriz não encontrada em {caminho_matriz}")
     exit()
+
 if not os.path.exists(caminho_escudo):
     logging.error(f"❌ Escudo não encontrado em {caminho_escudo}")
     exit()
@@ -32,15 +41,16 @@ altura_matriz, largura_matriz = matriz.shape[:2]
 
 # Carregar escudo
 escudo = cv2.imread(caminho_escudo, cv2.IMREAD_UNCHANGED)
-escudo = cv2.resize(escudo, (180, 180))  # ajuste de tamanho para caber corretamente
+escudo = cv2.resize(escudo, (180, 180))  # ajustar o tamanho do escudo
 
-# Inserir escudo na matriz (canto superior esquerdo)
-y_offset, x_offset = 420, 150  # ajuste de coordenadas
+# Inserir escudo na matriz
+y_offset, x_offset = 420, 150
 for c in range(0, 3):
     matriz[y_offset:y_offset+escudo.shape[0], x_offset:x_offset+escudo.shape[1], c] = \
-        escudo[:, :, c] * (escudo[:, :, 3]//255) + matriz[y_offset:y_offset+escudo.shape[0], x_offset:x_offset+escudo.shape[1], c] * (1 - escudo[:, :, 3]//255)
+        escudo[:, :, c] * (escudo[:, :, 3]/255.0) + \
+        matriz[y_offset:y_offset+escudo.shape[0], x_offset:x_offset+escudo.shape[1], c] * (1.0 - escudo[:, :, 3]/255.0)
 
-# Texto de exemplo para campos
+# Texto exemplo (pode adaptar conforme desejado)
 font = cv2.FONT_HERSHEY_SIMPLEX
 cor = (0, 0, 0)
 espessura = 2
@@ -55,11 +65,11 @@ cv2.putText(matriz, '450K', (380, 1920), font, escala, cor, espessura, cv2.LINE_
 cv2.putText(matriz, '16:00', (380, 2050), font, escala, cor, espessura, cv2.LINE_AA)
 cv2.putText(matriz, 'Aguardando', (380, 2180), font, escala, cor, espessura, cv2.LINE_AA)
 
+# Salvar imagem final
 cv2.imwrite(caminho_saida, matriz)
 logging.info(f"✅ Imagem gerada e salva como {caminho_saida}, pronta para envio ao Telegram.")
 
-# Enviar ao Telegram
+# Enviar imagem ao Telegram
 with open(caminho_saida, 'rb') as img:
     bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=img)
     logging.info("✅ Imagem enviada ao Telegram com sucesso.")
-
