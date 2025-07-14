@@ -1,59 +1,98 @@
-# gerar_imagem_matriz.py
-
 import os
-import sys
-from PIL import Image
+import io
+import cv2
+import numpy as np
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
+from telegram import Bot
+import logging
 
-# --- CONFIGURAÇÕES ---
-BASE_DIR = os.path.dirname(__file__)
-ESCUDOS_DIR = os.path.join(BASE_DIR, 'escudos_folder')
-PLACEHOLDER = os.path.join(ESCUDOS_DIR, 'placeholder.png')
+logging.basicConfig(level=logging.INFO)
 
-def achar_escudo(nome_time):
-    nome = nome_time.strip()
-    caminho = os.path.join(ESCUDOS_DIR, f"{nome}.png")
-    if os.path.isfile(caminho):
-        return caminho
-    nome_lower = nome.lower()
-    for arq in os.listdir(ESCUDOS_DIR):
-        n = arq.lower()
-        if n.startswith(nome_lower + " (") and n.endswith(").png"):
-            return os.path.join(ESCUDOS_DIR, arq)
-    return PLACEHOLDER
+# Configs via vars de ambiente
+SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets.readonly']
+CRED_JSON = os.environ['GOOGLE_CREDENTIALS_JSON']
+ESCUDOS_FOLDER_ID = os.environ['PASTA_ESCUDOS_ID']
+SHEET_ID = os.environ['PASTA_ENTRADA_ID']
+MATRIZ_NAME = 'Matriz Entrada Back Exchange.png'
+TELEGRAM_TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
+TELEGRAM_CHAT = os.environ['TELEGRAM_CHAT_ID']
 
-def gerar_matriz(lista_times, cols=5, tamanho=(64, 64), esp=10, cor_fundo=(255,255,255)):
-    total = len(lista_times)
-    linhas = (total + cols - 1) // cols
-    largura = cols * tamanho[0] + (cols + 1) * esp
-    altura = linhas * tamanho[1] + (linhas + 1) * esp
+# Inicia Drive, Sheets e Telegram
+creds = service_account.Credentials.from_service_account_info(eval(CRED_JSON), scopes=SCOPES)
+drive = build('drive', 'v3', credentials=creds)
+sheets = build('sheets', 'v4', credentials=creds)
+bot = Bot(TELEGRAM_TOKEN)
 
-    img = Image.new('RGB', (largura, altura), cor_fundo)
-    for idx, time in enumerate(lista_times):
-        escudo_caminho = achar_escudo(time)
-        escudo = Image.open(escudo_caminho).convert('RGBA').resize(tamanho, Image.ANTIALIAS)
-        x = esp + (idx % cols) * (tamanho[0] + esp)
-        y = esp + (idx // cols) * (tamanho[1] + esp)
-        img.paste(escudo, (x, y), escudo)
+def baixar_matriz():
+    # pesquisa e baixa matriz
+    q = f"'{ESCUDOS_FOLDER_ID}' in parents and name='{MATRIZ_NAME}'"
+    resp = drive.files().list(q=q, fields="files(id)").execute()
+    file_id = resp.get('files', [])[0]['id']
+    data = drive.files().get_media(fileId=file_id).execute()
+    path = MATRIZ_NAME
+    with open(path, 'wb') as f: f.write(data)
+    return path
 
+def baixar_escudo(nome_time):
+    q = f"'{ESCUDOS_FOLDER_ID}' in parents and name contains '{nome_time}'"
+    resp = drive.files().list(q=q, fields="files(id,name)").execute()
+    files = resp.get('files', [])
+    if not files: return None
+    file = files[0]
+    data = drive.files().get_media(fileId=file['id']).execute()
+    buf = io.BytesIO(data)
+    img = cv2.imdecode(np.frombuffer(buf.getvalue(), np.uint8), cv2.IMREAD_UNCHANGED)
     return img
 
-def main():
-    if len(sys.argv) < 3:
-        print("Uso: python gerar_imagem_matriz.py lista_times.txt matriz_entrada_preenchida.png [colunas]")
-        sys.exit(1)
+def ler_entrada():
+    resp = sheets.spreadsheets().values().get(spreadsheetId=SHEET_ID, range='A1:Z1000').execute()
+    rows = resp.get('values', [])
+    # encontra última entrada válida
+    for row in reversed(rows[1:]):
+        if len(row) > 13 and row[13].upper() == 'ENTRADA':
+            return dict(zip(rows[0], row))
+    return None
 
-    lista_arquivo = sys.argv[1]
-    saida = os.path.join(BASE_DIR, 'matrizes_oficiais', 'matriz_entrada_preenchida.png')
-    colunas = int(sys.argv[3]) if len(sys.argv) > 3 else 5
+def gerar_e_enviar():
+    entrada = ler_entrada()
+    if not entrada: 
+        logging.error("Nenhuma entrada encontrada.")
+        return
 
-    os.makedirs(os.path.dirname(saida), exist_ok=True)
+    matriz_path = baixar_matriz()
+    mat = cv2.imread(matriz_path)
+    h, w = mat.shape[:2]
 
-    with open(lista_arquivo, encoding='utf-8') as f:
-        times = [linha.strip() for linha in f if linha.strip()]
+    # insere escudos
+    for key, pos in [('Time_Casa',(50,300)), ('Time_Visitante',(w-230,300))]:
+        img = baixar_escudo(entrada[key])
+        if img is not None:
+            esc = cv2.resize(img, (180,180))
+            x,y = pos
+            alpha = esc[:, :, 3]/255.0
+            for c in range(3):
+                mat[y:y+180, x:x+180, c] = (alpha * esc[:, :, c] + (1-alpha)*mat[y:y+180, x:x+180, c])
 
-    matriz = gerar_matriz(times, cols=colunas)
-    matriz.save(saida)
-    print(f"Matriz salva em '{saida}'")
+    # insere textos - posição ajustada como ex
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    def put(txt, pos):
+        cv2.putText(mat, str(txt), pos, font, 1.2, (0,0,0), 2, cv2.LINE_AA)
 
-if __name__ == '__main__':
-    main()
+    put(entrada['Time_Casa'], (50,500))
+    put(entrada['Time_Visitante'], (w-300,500))
+    put(entrada['Odds'], (380,600))
+    put(entrada['Stake'], (380,650))
+    put(entrada['Liquidez'], (50,700))
+    put(entrada['Hora'], (50,750))
+    put(entrada['Competicao'], (50,800))
+    put(entrada['Estadio'], (50,850))
+
+    out = 'matriz_entrada_preenchida.png'
+    cv2.imwrite(out, mat)
+    bot.send_photo(chat_id=TELEGRAM_CHAT, photo=open(out, 'rb'))
+    logging.info("✅ Entrada enviada.")
+
+if __name__=='__main__':
+    gerar_e_enviar()
+
