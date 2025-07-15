@@ -13,19 +13,22 @@ logging.basicConfig(level=logging.INFO)
 # ✅ Função para baixar do Google Drive
 def baixar_arquivo_drive(nome_arquivo, tipo_operacao, destino):
     try:
-        logging.info("🔹 Iniciando download da matriz do Drive...")
+        logging.info("📥 Iniciando download da matriz do Drive...")
 
         creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
         creds = Credentials.from_service_account_info(eval(creds_json))
-        service = build('drive', 'v3', credentials=creds)
+        service = build('drive', 'v3', credentials=creds, cache_discovery=False)
 
         pasta_id = os.environ.get(f'PASTA_{tipo_operacao.upper()}_ID')
+        if not pasta_id:
+            raise ValueError("Variável de ambiente PASTA_{}_ID ausente.".format(tipo_operacao.upper()))
+
         query = f"name='{nome_arquivo}' and '{pasta_id}' in parents and trashed=false"
         results = service.files().list(q=query, fields="files(id, name)").execute()
         items = results.get('files', [])
 
         if not items:
-            logging.error(f"❌ Arquivo {nome_arquivo} não encontrado no Drive.")
+            logging.error(f"❌ Arquivo '{nome_arquivo}' não encontrado no Drive.")
             return False
 
         file_id = items[0]['id']
@@ -39,7 +42,7 @@ def baixar_arquivo_drive(nome_arquivo, tipo_operacao, destino):
             while not done:
                 status, done = downloader.next_chunk()
                 if status:
-                    logging.info(f"📥 Download {int(status.progress() * 100)}% concluído.")
+                    logging.info(f"📊 Download {int(status.progress() * 100)}% concluído.")
 
         logging.info(f"✅ Arquivo '{nome_arquivo}' baixado e salvo em '{destino}'.")
         return destino
@@ -53,7 +56,6 @@ async def main():
     try:
         TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
         TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
-
         bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
         # Baixar a matriz
@@ -61,13 +63,13 @@ async def main():
         baixar_arquivo_drive('Matriz Entrada Back Exchange.png', 'ENTRADA', destino)
 
         # Gerar a imagem automaticamente com dados
-        logging.info("⚡ Gerando imagem com dados e escudo...")
+        logging.info("⚙️ Gerando imagem com dados e escudo...")
         import gerar_imagem_matriz  # importa e executa automaticamente o script de geração
         logging.info("✅ Imagem gerada, enviando ao Telegram...")
 
-        img_path = 'matrizes_oficiais/matriz_entrada_preenchida.png'
+        img_path = "matrizes_oficiais/matriz_entrada_preenchida.png"
 
-        # Confirma se existe antes do envio
+        # Confirma se existe antes de envio
         if not os.path.exists(img_path):
             logging.error(f"❌ Arquivo '{img_path}' não encontrado para envio.")
             return
