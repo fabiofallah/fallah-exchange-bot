@@ -1,63 +1,113 @@
 import os
-from PIL import Image, ImageDraw, ImageFont
-import requests
+import io
+import cv2
+import numpy as np
+import logging
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
+from telegram import Bot
 
-# Criação do diretório se não existir
-output_dir = "matrizes_oficiais"
-os.makedirs(output_dir, exist_ok=True)
+logging.basicConfig(level=logging.INFO)
 
-# Caminhos
-input_image_path = os.path.join(output_dir, "Matriz Entrada Back Exchange.png")
-output_image_path = os.path.join(output_dir, "matriz_entrada_preenchida.png")
+# Configurações (via variáveis de ambiente)
+SCOPES = [
+    'https://www.googleapis.com/auth/drive',
+    'https://www.googleapis.com/auth/spreadsheets.readonly'
+]
+CRED_JSON = os.environ['GOOGLE_CREDENTIALS_JSON']
+ESCUDOS_FOLDER_ID = os.environ['PASTA_ESCUDOS_ID']
+SHEET_ID = os.environ['PASTA_ENTRADA_ID']
+MATRIZ_NAME = 'Matriz Entrada Back Exchange.png'
+TELEGRAM_TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
+TELEGRAM_CHAT = os.environ['TELEGRAM_CHAT_ID']
 
-# Variáveis do Telegram (certifique-se que estão configuradas no Railway)
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+# Cria pasta local de saída
+OUTPUT_DIR = 'matrizes_oficiais'
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-def gerar_imagem():
-    if not os.path.exists(input_image_path):
-        print(f"❌ Imagem base não encontrada: {input_image_path}")
-        return False
+# Inicializa Drive, Sheets e Telegram
+creds = service_account.Credentials.from_service_account_info(eval(CRED_JSON), scopes=SCOPES)
+drive = build('drive', 'v3', credentials=creds)
+sheets = build('sheets', 'v4', credentials=creds)
+bot = Bot(TELEGRAM_TOKEN)
 
-    try:
-        imagem_base = Image.open(input_image_path).convert("RGBA")
-        draw = ImageDraw.Draw(imagem_base)
+def baixar_matriz():
+    logging.info('🔄 Iniciando download da matriz do Drive...')
+    q = f"'{ESCUDOS_FOLDER_ID}' in parents and name='{MATRIZ_NAME}'"
+    resp = drive.files().list(q=q, fields='files(id)').execute()
+    file_id = resp.get('files', [])[0]['id']
+    data = drive.files().get_media(fileId=file_id).execute()
+    path = os.path.join(OUTPUT_DIR, MATRIZ_NAME)
+    with open(path, 'wb') as f:
+        f.write(data)
+    logging.info(f'✅ Arquivo \'{MATRIZ_NAME}\' salvo em \'{path}\'.')
+    return path
 
-        # Fonte
-        try:
-            fonte = ImageFont.truetype("arial.ttf", 38)
-        except:
-            fonte = ImageFont.load_default()
+def baixar_escudo(nome_time):
+    q = f"'{ESCUDOS_FOLDER_ID}' in parents and name contains '{nome_time}'"
+    resp = drive.files().list(q=q, fields='files(id,name)').execute()
+    files = resp.get('files', [])
+    if not files:
+        return None
+    data = drive.files().get_media(fileId=files[0]['id']).execute()
+    buf = io.BytesIO(data)
+    img = cv2.imdecode(np.frombuffer(buf.getvalue(), np.uint8), cv2.IMREAD_UNCHANGED)
+    return img
 
-        # Dados de exemplo (você pode ajustar depois)
-        draw.text((100, 80), "TIME A x TIME B", font=fonte, fill="white")
-        draw.text((100, 140), "Horário: 19h30", font=fonte, fill="white")
-        draw.text((100, 200), "Estádio: Maracanã", font=fonte, fill="white")
+def ler_entrada():
+    resp = sheets.spreadsheets().values().get(spreadsheetId=SHEET_ID, range='A1:Z1000').execute()
+    rows = resp.get('values', [])
+    for row in reversed(rows[1:]):
+        if len(row) > 13 and row[13].upper() == 'ENTRADA':
+            return dict(zip(rows[0], row))
+    return None
 
-        imagem_base.save(output_image_path)
-        print(f"✅ Imagem gerada com sucesso: {output_image_path}")
-        return True
-
-    except Exception as e:
-        print(f"❌ Erro ao gerar imagem: {e}")
-        return False
-
-def enviar_telegram():
-    if not os.path.exists(output_image_path):
-        print("❌ Arquivo de imagem gerada não encontrado para envio.")
+def gerar_e_enviar():
+    entrada = ler_entrada()
+    if not entrada:
+        logging.error('❌ Nenhuma entrada encontrada.')
         return
 
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
-    with open(output_image_path, "rb") as image_file:
-        files = {"photo": image_file}
-        data = {"chat_id": CHAT_ID}
-        response = requests.post(url, files=files, data=data)
+    matriz_path = baixar_matriz()
+    mat = cv2.imread(matriz_path)
+    h, w = mat.shape[:2]
 
-    if response.status_code == 200:
-        print("✅ Imagem enviada com sucesso para o Telegram.")
-    else:
-        print(f"❌ Falha no envio para Telegram: {response.status_code} - {response.text}")
+    for key, pos in [('Time_Casa', (50,300)), ('Time_Visitante', (w-230,300))]:
+        img = baixar_escudo(entrada[key])
+        if img is not None:
+            esc = cv2.resize(img, (180,180))
+            alpha = esc[:,:,3] / 255.0 if esc.shape[2] == 4 else None
+            for c in range(3):
+                if alpha is not None:
+                    mat[pos[1]:pos[1]+180, pos[0]:pos[0]+180, c] = (
+                        alpha * esc[:,:,c] + (1-alpha) * mat[pos[1]:pos[1]+180, pos[0]:pos[0]+180, c]
+                    )
+                else:
+                    mat[pos[1]:pos[1]+180, pos[0]:pos[0]+180, c] = esc[:,:,c]
 
-if __name__ == "__main__":
-    if gerar_imagem():
-        enviar_telegram()
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    def put(txt, pos):
+        cv2.putText(mat, str(txt), pos, font, 1.2, (0,0,0), 2, cv2.LINE_AA)
+
+    put(entrada['Time_Casa'], (50,500))
+    put(entrada['Time_Visitante'], (w-300,500))
+    put(entrada['Odds'], (380,600))
+    put(entrada['Stake'], (380,650))
+    put(entrada['Liquidez'], (50,700))
+    put(entrada['Hora'], (50,750))
+    put(entrada['Competicao'], (50,800))
+    put(entrada['Estadio'], (50,850))
+
+    out = os.path.join(OUTPUT_DIR, 'matriz_entrada_preenchida.png')
+    cv2.imwrite(out, mat)
+    logging.info('✅ Imagem gerada, enviando ao Telegram...')
+
+    if not os.path.exists(out):
+        logging.error(f'❌ Arquivo \'{out}\' não encontrado para envio.')
+        return
+
+    bot.send_photo(chat_id=TELEGRAM_CHAT, photo=open(out, 'rb'))
+    logging.info('✅ Entrada enviada.')
+
+if __name__ == '__main__':
+    gerar_e_enviar()
