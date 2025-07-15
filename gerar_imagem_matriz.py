@@ -1,47 +1,71 @@
-def gerar_e_enviar():
-    entrada = ler_entrada()
-    if not entrada:
-        logging.error("Nenhuma entrada encontrada.")
+import os
+import cv2
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
+import io
+import telegram
+import logging
+
+# Configurações básicas
+logging.basicConfig(level=logging.INFO)
+ESCUDOS_FOLDER_ID = os.getenv("PASTA_ESCUDOS_ID")
+MATRIZ_FOLDER = "matrizes_oficiais"
+MATRIZ_NOME = "Matriz Entrada Back Exchange.png"
+MATRIZ_SAIDA = "matriz_entrada_preenchida.png"
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+# Função para baixar arquivo do Google Drive
+def baixar_arquivo(service, file_id, nome_destino):
+    request = service.files().get_media(fileId=file_id)
+    with io.FileIO(nome_destino, 'wb') as f:
+        downloader = MediaIoBaseDownload(f, request)
+        done = False
+        while done is False:
+            _, done = downloader.next_chunk()
+
+# Função principal
+def main():
+    from google.oauth2 import service_account
+    creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
+    creds = service_account.Credentials.from_service_account_info(eval(creds_json))
+    service = build('drive', 'v3', credentials=creds)
+
+    logging.info("🔵 Iniciando download da matriz do Drive...")
+    results = service.files().list(q=f"name='{MATRIZ_NOME}'", fields="files(id)").execute()
+    files = results.get('files', [])
+
+    if not files:
+        logging.error("❌ Matriz não encontrada no Drive.")
         return
 
-    matriz_path = baixar_matriz()
-    mat = cv2.imread(matriz_path)
-    h, w = mat.shape[:2]
+    matriz_id = files[0]['id']
+    os.makedirs(MATRIZ_FOLDER, exist_ok=True)
+    caminho_matriz = os.path.join(MATRIZ_FOLDER, MATRIZ_NOME)
+    baixar_arquivo(service, matriz_id, caminho_matriz)
+    logging.info(f"✅ Arquivo '{MATRIZ_NOME}' baixado e salvo em '{caminho_matriz}'.")
 
-    # insere escudos
-    for key, pos in [('Time_Casa', (50,300)), ('Time_Visitante', (w-230,300))]:
-        img = baixar_escudo(entrada[key])
-        if img is not None:
-            esc = cv2.resize(img, (180,180))
-            x, y = pos
-            alpha = esc[:, :, 3] / 255.0 if esc.shape[2] == 4 else None
-            for c in range(3):
-                if alpha is not None:
-                    mat[y:y+180, x:x+180, c] = (alpha * esc[:, :, c] + (1-alpha) * mat[y:y+180, x:x+180, c])
-                else:
-                    mat[y:y+180, x:x+180, c] = esc[:, :, c]
+    # Carrega matriz
+    imagem = cv2.imread(caminho_matriz)
 
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    def put(txt, pos):
-        cv2.putText(mat, str(txt), pos, font, 1.2, (0,0,0), 2, cv2.LINE_AA)
+    # Aqui vai a edição real da imagem...
+    cv2.putText(imagem, "BACK", (95, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
 
-    put(entrada['Time_Casa'], (50,500))
-    put(entrada['Time_Visitante'], (w-300,500))
-    put(entrada['Odds'], (380,600))
-    put(entrada['Stake'], (380,650))
-    put(entrada['Liquidez'], (50,700))
-    put(entrada['Hora'], (50,750))
-    put(entrada['Competicao'], (50,800))
-    put(entrada['Estadio'], (50,850))
+    # Salvando imagem final com nome fixo
+    caminho_saida = os.path.join(MATRIZ_FOLDER, MATRIZ_SAIDA)
+    sucesso = cv2.imwrite(caminho_saida, imagem)
 
-    out = 'matriz_entrada_preenchida.png'
-    cv2.imwrite(out, mat)
+    if not sucesso or not os.path.exists(caminho_saida):
+        logging.error(f"❌ Falha ao salvar a imagem final em '{caminho_saida}'.")
+        return
 
-    try:
-        bot.send_photo(chat_id=TELEGRAM_CHAT, photo=open(out, 'rb'))
-        logging.info("✅ Entrada enviada.")
-    except Exception as e:
-        logging.error(f"❌ Erro no envio ao Telegram: {e}")
+    logging.info("✅ Imagem gerada, enviando ao Telegram...")
 
-if __name__ == '__main__':
-    gerar_e_enviar()
+    bot = telegram.Bot(token=TOKEN)
+    with open(caminho_saida, 'rb') as photo:
+        bot.send_photo(chat_id=CHAT_ID, photo=photo)
+
+if __name__ == "__main__":
+    main()
