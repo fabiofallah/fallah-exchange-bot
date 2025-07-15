@@ -1,87 +1,61 @@
 import os
+from PIL import Image, ImageDraw, ImageFont
 import logging
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from telegram import Bot
-from PIL import Image, ImageDraw
 
 logging.basicConfig(level=logging.INFO)
 
-# 🐞 Debug: exibir IDs das pastas que o script está lendo
-logging.info("DEBUG → PASTA_ESCUDOS_ID = %s", os.getenv("PASTA_ESCUDOS_ID"))
-logging.info("DEBUG → PASTA_ENTRADA_ID = %s", os.getenv("PASTA_ENTRADA_ID"))
+def gerar_imagem_matriz():
+    # caminhos
+    base_path = 'matrizes_oficiais'
+    entrada_pra_base = os.path.join(base_path, 'Matriz Entrada Back Exchange.png')
+    saida_preenchida = os.path.join(base_path, 'matriz_entrada_preenchida.png')
 
-# Carregar credenciais do Google
-creds_info = os.getenv("GOOGLE_CREDENTIALS_JSON")
-if not creds_info:
-    logging.error("Variável GOOGLE_CREDENTIALS_JSON não definida. Finalize antes de prosseguir.")
-    exit(1)
-
-creds = service_account.Credentials.from_service_account_info(
-    eval(creds_info)
-)
-drive_service = build('drive', 'v3', credentials=creds)
-
-# IDs das pastas do Drive
-PASTA_ESCUDOS_ID = os.getenv("PASTA_ESCUDOS_ID")
-PASTA_ENTRADA_ID = os.getenv("PASTA_ENTRADA_ID")
-if not PASTA_ESCUDOS_ID or not PASTA_ENTRADA_ID:
-    logging.error("Variável de ambiente ausente: PASTA_ESCUDOS_ID ou PASTA_ENTRADA_ID; finalize antes de prosseguir.")
-    exit(1)
-
-# Telegram
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-if not BOT_TOKEN or not CHAT_ID:
-    logging.error("Variável de ambiente ausente: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID; finalize antes de prosseguir.")
-    exit(1)
-
-bot = Bot(token=BOT_TOKEN)
-
-def baixar_arquivo(folder_id, file_name, dest_path):
-    query = f"'{folder_id}' in parents and name = '{file_name}' and trashed = false"
-    resp = drive_service.files().list(q=query, fields="files(id, name)").execute()
-    files = resp.get('files', [])
-    if not files:
-        logging.error("Arquivo '%s' não encontrado na pasta %s", file_name, folder_id)
-        return None
-    file_id = files[0]['id']
-    drive_service.files().get_media(fileId=file_id).execute()
-    request = drive_service.files().get_media(fileId=file_id)
-    with open(dest_path, 'wb') as fh:
-        fh.write(request.execute())
-    logging.info("✔ Arquivo '%s' baixado em '%s'.", file_name, dest_path)
-    return dest_path
-
-def gerar_imagem():
-    entrada = baixar_arquivo(PASTA_ENTRADA_ID, 'Matriz Entrada Back Exchange.png', 'matrizes_oficiais/entrada.png')
-    if not entrada:
-        return None
-
-    # exemplo simples: abre a entrada e salva preenchida
-    img = Image.open(entrada)
-    draw = ImageDraw.Draw(img)
-    draw.text((50, 100), "Fluminense vs Flamengo", fill="white")
-    destino = 'matrizes_oficiais/matriz_entrada_preenchida.png'
-    img.save(destino)
-    logging.info("✔ Imagem gerada e salva em '%s'.", destino)
-    return destino
-
-def enviar_telegram(caminho):
-    if not os.path.exists(caminho):
-        logging.error("Arquivo '%s' não encontrado para envio.", caminho)
+    # carregar imagem base
+    try:
+        img = Image.open(entrada_pra_base).convert('RGBA')
+        logging.info(f"✅ Base da matriz carregada de '{entrada_pra_base}'.")
+    except FileNotFoundError:
+        logging.error(f"❌ Imagem base não encontrada: '{entrada_pra_base}'.")
         return False
-    with open(caminho, 'rb') as f:
-        bot.send_photo(chat_id=CHAT_ID, photo=f)
-    logging.info("✔ Enviado ao Telegram: %s", caminho)
+
+    draw = ImageDraw.Draw(img)
+
+    # ajustar, se desejar, fonte padrão
+    try:
+        font = ImageFont.truetype("arial.ttf", size=40)
+    except IOError:
+        font = ImageFont.load_default()
+        logging.warning("⚠️ Fonte Arial não encontrada. Usando fonte padrão.")
+
+    # exemplo: adicionar texto geral (cupom, odds etc.)
+    texto = "Entrada: BACK -> LAY"
+    pos_texto = (50, 50)
+    draw.text(pos_texto, texto, font=font, fill="white")
+    logging.info("📝 Adicionado texto na imagem.")
+
+    # exemplo: adicionar escudos de dois times
+    escudos_folder = os.environ.get('PASTA_ESCUDOS_ID')
+    # OBS: para acessar escudos locais, use caminho correto. Se fizer download, use o nome do arquivo.
+    escudos_locais = ['Fluminense.png', 'Flamengo.PNG']
+    for i, escudo_nome in enumerate(escudos_locais):
+        escudo_caminho = os.path.join(escudos_folder, escudo_nome)
+        try:
+            esc = Image.open(escudo_caminho).convert('RGBA')
+        except Exception as e:
+            logging.error(f"❌ Não foi possível abrir escudo {escudo_caminho}: {e}")
+            continue
+
+        esc = esc.resize((100, 100), Image.ANTIALIAS)
+        pos = (50 + i * 150, 150)
+        img.paste(esc, pos, esc)
+        logging.info(f"🛡️ Inserido escudo '{escudo_nome}' na posição {pos}.")
+
+    # salvar imagem final
+    img.save(saida_preenchida)
+    logging.info(f"✅ Imagem salva em '{saida_preenchida}'.")
     return True
 
-def main():
-    img_path = gerar_imagem()
-    if img_path:
-        enviar_telegram(img_path)
-
-if __name__ == '__main__':
-    main()
-
+# Se executado diretamente
+if __name__ == "__main__":
+    gerar_imagem_matriz()
 
