@@ -1,89 +1,63 @@
 import os
-import io
-import json
 from PIL import Image, ImageDraw, ImageFont
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
-import telegram
+import requests
 
-# Variáveis de ambiente (Railway)
-PASTA_ENTRADA_ID = os.getenv("PASTA_ENTRADA_ID")
-PASTA_ESCUDOS_ID = os.getenv("PASTA_ESCUDOS_ID")
-GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+# Criação do diretório se não existir
+output_dir = "matrizes_oficiais"
+os.makedirs(output_dir, exist_ok=True)
 
-# Config Google Drive com service account das variáveis
-creds_info = json.loads(GOOGLE_CREDENTIALS_JSON)
-SCOPES = ['https://www.googleapis.com/auth/drive']
-credentials = service_account.Credentials.from_service_account_info(
-    creds_info, scopes=SCOPES
-)
-drive_service = build('drive', 'v3', credentials=credentials)
+# Caminhos
+input_image_path = os.path.join(output_dir, "Matriz Entrada Back Exchange.png")
+output_image_path = os.path.join(output_dir, "matriz_entrada_preenchida.png")
 
-def baixar_arquivo_drive(file_name, folder_id, output_path):
-    query = f"'{folder_id}' in parents and name = '{file_name}' and trashed = false"
-    resp = drive_service.files().list(q=query, fields="files(id,name)").execute()
-    files = resp.get('files', [])
-    if not files:
-        raise FileNotFoundError(f"Arquivo '{file_name}' não encontrado na pasta {folder_id}.")
-    file_id = files[0]['id']
-    request = drive_service.files().get_media(fileId=file_id)
-    fh = io.FileIO(output_path, 'wb')
-    downloader = MediaIoBaseDownload(fh, request)
-    done = False
-    while not done:
-        status, done = downloader.next_chunk()
-    fh.close()
+# Variáveis do Telegram (certifique-se que estão configuradas no Railway)
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-def gerar_imagem_com_dados():
-    os.makedirs("matrizes_oficiais", exist_ok=True)
+def gerar_imagem():
+    if not os.path.exists(input_image_path):
+        print(f"❌ Imagem base não encontrada: {input_image_path}")
+        return False
 
-    base_img = "Matriz Entrada Back Exchange.png"
-    caminho_base = f"matrizes_oficiais/{base_img}"
-    baixar_arquivo_drive(base_img, PASTA_ENTRADA_ID, caminho_base)
+    try:
+        imagem_base = Image.open(input_image_path).convert("RGBA")
+        draw = ImageDraw.Draw(imagem_base)
 
-    img = Image.open(caminho_base).convert("RGBA")
-    draw = ImageDraw.Draw(img)
-    font_path = "arial.ttf"
-    if not os.path.exists(font_path):
-        font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-    font = ImageFont.truetype(font_path, 26)
+        # Fonte
+        try:
+            fonte = ImageFont.truetype("arial.ttf", 38)
+        except:
+            fonte = ImageFont.load_default()
 
-    # Substitua estes valores por dados reais do Google Sheets
-    draw.text((170, 410), "Maracanã", fill="black", font=font)
-    draw.text((170, 445), "BRASILEIRÃO", fill="black", font=font)
-    draw.text((170, 485), "1.80", fill="black", font=font)
-    draw.text((170, 520), "R$ 100", fill="black", font=font)
-    draw.text((170, 560), "BACK", fill="black", font=font)
-    draw.text((170, 600), "R$ 280", fill="black", font=font)
-    draw.text((170, 640), "18:30", fill="black", font=font)
-    draw.text((170, 680), "AGUARDANDO", fill="black", font=font)
+        # Dados de exemplo (você pode ajustar depois)
+        draw.text((100, 80), "TIME A x TIME B", font=fonte, fill="white")
+        draw.text((100, 140), "Horário: 19h30", font=fonte, fill="white")
+        draw.text((100, 200), "Estádio: Maracanã", font=fonte, fill="white")
 
-    esc1 = "flamengo.png"
-    esc2 = "palmeiras.png"
-    baixar_arquivo_drive(esc1, PASTA_ESCUDOS_ID, esc1)
-    baixar_arquivo_drive(esc2, PASTA_ESCUDOS_ID, esc2)
+        imagem_base.save(output_image_path)
+        print(f"✅ Imagem gerada com sucesso: {output_image_path}")
+        return True
 
-    e1 = Image.open(esc1).convert("RGBA").resize((100, 100))
-    e2 = Image.open(esc2).convert("RGBA").resize((100, 100))
-    img.paste(e1, (80, 150), e1)
-    img.paste(e2, (400, 150), e2)
+    except Exception as e:
+        print(f"❌ Erro ao gerar imagem: {e}")
+        return False
 
-    output = "matrizes_oficiais/matriz_entrada_preenchida.png"
-    img.save(output)
-    return output
+def enviar_telegram():
+    if not os.path.exists(output_image_path):
+        print("❌ Arquivo de imagem gerada não encontrado para envio.")
+        return
 
-def enviar_para_telegram(path):
-    bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
-    with open(path, "rb") as foto:
-        bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=foto)
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+    with open(output_image_path, "rb") as image_file:
+        files = {"photo": image_file}
+        data = {"chat_id": CHAT_ID}
+        response = requests.post(url, files=files, data=data)
+
+    if response.status_code == 200:
+        print("✅ Imagem enviada com sucesso para o Telegram.")
+    else:
+        print(f"❌ Falha no envio para Telegram: {response.status_code} - {response.text}")
 
 if __name__ == "__main__":
-    try:
-        foto = gerar_imagem_com_dados()
-        enviar_para_telegram(foto)
-        print("✅ Sucesso! Imagem enviada.")
-    except Exception as e:
-        print("❌ Erro:", e)
+    if gerar_imagem():
+        enviar_telegram()
