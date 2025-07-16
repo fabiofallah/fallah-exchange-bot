@@ -6,40 +6,37 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from telegram import Bot
 
-# === CONFIGURAÇÃO DO TELEGRAM ===
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")  # CHAT_ID de teste fixo
+# === VARIÁVEIS DE CONFIGURAÇÃO ===
+TELEGRAM_TOKEN = '7777458509:AAHfshLsxT8dyN3b1eY_6zTnOlFQwWjNo58'
+CHAT_ID = '1810082386'  # Teste direto no seu Telegram
 
-# === CONFIGURAÇÃO DO GOOGLE DRIVE ===
-DRIVE_FOLDER_ID = os.environ.get("PASTA_ENTRADA_ID")
+DRIVE_FOLDER_ID = '1MRwEUbr3UVZ99BWPpohM5LhGOmU7Mgiz'  # Pasta ENTRADA
+SERVICE_ACCOUNT_FILE = 'credenciais.json'  # JSON da conta de serviço
 
-# === CREDENCIAIS DA CONTA DE SERVIÇO ===
-import json
-google_credentials_dict = json.loads(os.environ.get("GOOGLE_CREDENTIALS_JSON"))
-credentials = service_account.Credentials.from_service_account_info(
-    google_credentials_dict,
-    scopes=["https://www.googleapis.com/auth/drive"]
-)
-
-# === DADOS DE EXEMPLO PARA INSERIR NA MATRIZ ===
+# === DADOS DE TESTE (você pode trocar por dados reais ou importar de planilha futuramente) ===
 DADOS_TEXTO = {
     'ESTÁDIO': 'Maracanã',
     'COMPETIÇÃO': 'Brasileirão Série A',
     'ODDS': '1.90',
-    'TIME CASA': 'Fluminense',
-    'TIME VISITANTE': 'Flamengo',
+    'STAKE': 'R$100',
+    'MERCADO': 'Back FT',
+    'LIQUIDEZ': 'Alta',
     'HORÁRIO': '16:00',
+    'RESULTADO': '',
 }
 
 # === AUTENTICAÇÃO COM GOOGLE DRIVE ===
 def autenticar_drive():
-    return build('drive', 'v3', credentials=credentials)
+    credenciais = service_account.Credentials.from_service_account_file(
+        SERVICE_ACCOUNT_FILE,
+        scopes=['https://www.googleapis.com/auth/drive']
+    )
+    return build('drive', 'v3', credentials=credenciais)
 
-# === BUSCA A PRIMEIRA IMAGEM PNG NA PASTA DE ENTRADA ===
+# === BUSCA A IMAGEM NA PASTA DE ENTRADA ===
 def buscar_imagem_matriz(service):
     resultados = service.files().list(
         q=f"'{DRIVE_FOLDER_ID}' in parents and mimeType='image/png'",
-        orderBy="createdTime desc",
         fields="files(id, name)"
     ).execute()
     arquivos = resultados.get('files', [])
@@ -48,34 +45,29 @@ def buscar_imagem_matriz(service):
     return arquivos[0]['id'], arquivos[0]['name']
 
 # === FAZ O DOWNLOAD DA IMAGEM PARA MEMÓRIA ===
-def baixar_imagem(file_id):
-    token = credentials.token
-    if not token:
-        credentials.refresh(requests.Request())
-        token = credentials.token
-
+def baixar_imagem(service, file_id):
+    buffer = io.BytesIO()
     resposta = requests.get(
         f'https://www.googleapis.com/drive/v3/files/{file_id}?alt=media',
-        headers={"Authorization": f"Bearer {token}"}
+        headers={"Authorization": f"Bearer {service._http.credentials.token}"}
     )
-
-    if resposta.status_code != 200:
-        raise Exception("Erro ao baixar a imagem do Drive.")
-
-    buffer = io.BytesIO(resposta.content)
+    buffer.write(resposta.content)
     buffer.seek(0)
     return Image.open(buffer).convert('RGB')
 
 # === ESCREVE OS DADOS NA IMAGEM ===
 def preencher_imagem(imagem, dados):
     draw = ImageDraw.Draw(imagem)
-    font = ImageFont.truetype("arial.ttf", 28)
+    font = ImageFont.load_default()  # Compatível com Railway
 
-    draw.text((50, 430), f"🏟️ ESTÁDIO: {dados['ESTÁDIO']}", font=font, fill='black')
-    draw.text((50, 470), f"🏆 COMPETIÇÃO: {dados['COMPETIÇÃO']}", font=font, fill='black')
-    draw.text((50, 510), f"💸 ODDS: {dados['ODDS']}", font=font, fill='black')
-    draw.text((50, 550), f"🏠 {dados['TIME CASA']} x {dados['TIME VISITANTE']}", font=font, fill='black')
-    draw.text((50, 590), f"🕒 HORÁRIO: {dados['HORÁRIO']}", font=font, fill='black')
+    draw.text((60, 430), f"🏟️ ESTÁDIO : {dados['ESTÁDIO']}", font=font, fill='black')
+    draw.text((60, 460), f"🏆 COMPETIÇÃO : {dados['COMPETIÇÃO']}", font=font, fill='black')
+    draw.text((60, 490), f"💸 ODDS : {dados['ODDS']}", font=font, fill='black')
+    draw.text((60, 520), f"📌 STAKE : {dados['STAKE']}", font=font, fill='black')
+    draw.text((60, 550), f"📊 MERCADO : {dados['MERCADO']}", font=font, fill='black')
+    draw.text((60, 580), f"💧 LIQUIDEZ : {dados['LIQUIDEZ']}", font=font, fill='black')
+    draw.text((60, 610), f"🕒 HORÁRIO : {dados['HORÁRIO']}", font=font, fill='black')
+    draw.text((60, 640), f"✅ RESULTADO : {dados['RESULTADO']}", font=font, fill='black')
 
     return imagem
 
@@ -95,11 +87,10 @@ def main():
         service = autenticar_drive()
         file_id, nome = buscar_imagem_matriz(service)
         print(f"🖼️ Imagem encontrada: {nome}")
-        imagem = baixar_imagem(file_id)
+        imagem = baixar_imagem(service, file_id)
         imagem_editada = preencher_imagem(imagem, DADOS_TEXTO)
         enviar_para_telegram(imagem_editada)
         print("✅ Entrada enviada com sucesso!")
-
     except Exception as e:
         print(f"❌ Erro durante a execução: {e}")
 
