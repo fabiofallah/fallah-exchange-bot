@@ -1,19 +1,18 @@
 import os
 import io
+import json
 import requests
 from PIL import Image, ImageDraw, ImageFont
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from telegram import Bot
 
-# === VARIÁVEIS DE CONFIGURAÇÃO ===
-TELEGRAM_TOKEN = '7777458509:AAHfshLsxT8dyN3b1eY_6zTnOlFQwWjNo58'
-CHAT_ID = '1810082386'  # Teste direto no seu Telegram
+# === VARIÁVEIS DE AMBIENTE ===
+TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
+CHAT_ID = os.environ['CHAT_ID']
+DRIVE_FOLDER_ID = os.environ['DRIVE_FOLDER_ID']
 
-DRIVE_FOLDER_ID = '1MRwEUbr3UVZ99BWPpohM5LhGOmU7Mgiz'  # Pasta ENTRADA
-SERVICE_ACCOUNT_FILE = 'credenciais.json'  # JSON da conta de serviço
-
-# === DADOS DE TESTE (você pode trocar por dados reais ou importar de planilha futuramente) ===
+# === DADOS DA MATRIZ ===
 DADOS_TEXTO = {
     'ESTÁDIO': 'Maracanã',
     'COMPETIÇÃO': 'Brasileirão Série A',
@@ -27,13 +26,13 @@ DADOS_TEXTO = {
 
 # === AUTENTICAÇÃO COM GOOGLE DRIVE ===
 def autenticar_drive():
-    credenciais = service_account.Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE,
-        scopes=['https://www.googleapis.com/auth/drive']
+    info = json.loads(os.environ['GOOGLE_CREDENTIALS_JSON'])
+    credenciais = service_account.Credentials.from_service_account_info(
+        info, scopes=['https://www.googleapis.com/auth/drive']
     )
     return build('drive', 'v3', credentials=credenciais)
 
-# === BUSCA A IMAGEM NA PASTA DE ENTRADA ===
+# === BUSCA A IMAGEM NA PASTA ===
 def buscar_imagem_matriz(service):
     resultados = service.files().list(
         q=f"'{DRIVE_FOLDER_ID}' in parents and mimeType='image/png'",
@@ -44,7 +43,7 @@ def buscar_imagem_matriz(service):
         raise Exception("Nenhuma imagem PNG encontrada na pasta ENTRADA.")
     return arquivos[0]['id'], arquivos[0]['name']
 
-# === FAZ O DOWNLOAD DA IMAGEM PARA MEMÓRIA ===
+# === DOWNLOAD DA IMAGEM ===
 def baixar_imagem(service, file_id):
     buffer = io.BytesIO()
     resposta = requests.get(
@@ -58,7 +57,7 @@ def baixar_imagem(service, file_id):
 # === ESCREVE OS DADOS NA IMAGEM ===
 def preencher_imagem(imagem, dados):
     draw = ImageDraw.Draw(imagem)
-    font = ImageFont.load_default()  # Compatível com Railway
+    font = ImageFont.load_default()
 
     draw.text((60, 430), f"🏟️ ESTÁDIO : {dados['ESTÁDIO']}", font=font, fill='black')
     draw.text((60, 460), f"🏆 COMPETIÇÃO : {dados['COMPETIÇÃO']}", font=font, fill='black')
@@ -71,7 +70,7 @@ def preencher_imagem(imagem, dados):
 
     return imagem
 
-# === ENVIA A IMAGEM PARA O TELEGRAM ===
+# === ENVIA A IMAGEM VIA TELEGRAM ===
 def enviar_para_telegram(imagem):
     bot = Bot(token=TELEGRAM_TOKEN)
     buffer = io.BytesIO()
@@ -79,7 +78,7 @@ def enviar_para_telegram(imagem):
     buffer.seek(0)
     bot.send_photo(chat_id=CHAT_ID, photo=buffer, caption="✅ Entrada gerada automaticamente")
 
-# === FLUXO PRINCIPAL ===
+# === EXECUÇÃO ===
 def main():
     print("🚀 Iniciando robô...")
 
