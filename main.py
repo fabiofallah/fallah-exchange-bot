@@ -1,40 +1,36 @@
 import os
 import io
-import json
 import requests
 from PIL import Image, ImageDraw, ImageFont
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from telegram import Bot
+import json
 
 # === VARIÁVEIS DE CONFIGURAÇÃO ===
 TELEGRAM_TOKEN = '7777458509:AAHfshLsxT8dyN3b1eY_6zTnOlFQwWjNo58'
 CHAT_ID = '1810082386'  # Apenas para teste
-DRIVE_FOLDER_ID = '1MRwEUbrJ2V99bPPowhSLGm0Uzrmj1g2f'  # Pasta ENTRADA
 
-# === DADOS DE TESTE A SEREM INSERIDOS NA MATRIZ ===
-DADOS_TEXTO = {
-    'ESTÁDIO': 'Maracanã',
-    'COMPETIÇÃO': 'Brasileirão Série A',
-    'ODDS': '1.90',
-    'TIME CASA': 'Fluminense',
-    'TIME VISITANTE': 'Flamengo',
-    'HORÁRIO': '16:00',
-}
+# ID da pasta correta no Drive
+DRIVE_FOLDER_ID = '1MRwEUbr3UVZ99BWPpohM5LhGOmU7Mgiz'
 
-# === AUTENTICAÇÃO COM GOOGLE DRIVE USANDO VARIÁVEL DO RAILWAY ===
+# Credenciais do Google (vindo das variáveis do Railway)
+GOOGLE_CREDENTIALS = json.loads(os.environ.get("GOOGLE_CREDENTIALS_JSON"))
+
+# === AUTENTICAÇÃO COM GOOGLE DRIVE ===
 def autenticar_drive():
-    creds_info = json.loads(os.environ.get("GOOGLE_CREDENTIALS_JSON"))
-    creds = service_account.Credentials.from_service_account_info(
-        creds_info, scopes=['https://www.googleapis.com/auth/drive']
+    credenciais = service_account.Credentials.from_service_account_info(
+        GOOGLE_CREDENTIALS,
+        scopes=['https://www.googleapis.com/auth/drive']
     )
-    return build('drive', 'v3', credentials=creds)
+    return build('drive', 'v3', credentials=credenciais)
 
 # === BUSCA A IMAGEM NA PASTA DE ENTRADA ===
 def buscar_imagem_matriz(service):
     resultados = service.files().list(
         q=f"'{DRIVE_FOLDER_ID}' in parents and mimeType='image/png'",
-        fields="files(id, name)"
+        fields="files(id, name)",
+        pageSize=1
     ).execute()
     arquivos = resultados.get('files', [])
     if not arquivos:
@@ -56,7 +52,7 @@ def baixar_imagem(service, file_id):
 # === ESCREVE OS DADOS NA IMAGEM ===
 def preencher_imagem(imagem, dados):
     draw = ImageDraw.Draw(imagem)
-    font = ImageFont.truetype("arial.ttf", 28)  # Substitua se não estiver disponível no Railway
+    font = ImageFont.truetype("arial.ttf", 28)  # Altere se necessário
 
     draw.text((50, 430), f"🏟️ ESTÁDIO: {dados['ESTÁDIO']}", font=font, fill='black')
     draw.text((50, 470), f"🏆 COMPETIÇÃO: {dados['COMPETIÇÃO']}", font=font, fill='black')
@@ -74,9 +70,20 @@ def enviar_para_telegram(imagem):
     buffer.seek(0)
     bot.send_photo(chat_id=CHAT_ID, photo=buffer, caption="✅ Entrada gerada automaticamente")
 
+# === DADOS DE TESTE A SEREM INSERIDOS NA MATRIZ ===
+DADOS_TEXTO = {
+    'ESTÁDIO': 'Maracanã',
+    'COMPETIÇÃO': 'Brasileirão Série A',
+    'ODDS': '1.90',
+    'TIME CASA': 'Fluminense',
+    'TIME VISITANTE': 'Flamengo',
+    'HORÁRIO': '16:00',
+}
+
 # === FLUXO PRINCIPAL ===
 def main():
     print("🚀 Iniciando robô...")
+
     try:
         service = autenticar_drive()
         file_id, nome = buscar_imagem_matriz(service)
