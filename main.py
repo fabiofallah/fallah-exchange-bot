@@ -1,105 +1,101 @@
-import gspread
-import requests
-import json
-import io
 import os
-from PIL import Image, ImageDraw, ImageFont
-from google.oauth2.service_account import Credentials
+import json
+import telegram
+from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from PIL import Image, ImageDraw, ImageFont
+import requests
+from io import BytesIO
 from googleapiclient.http import MediaIoBaseDownload
-from telegram import Bot
 
-# === CONFIGURAÇÕES ===
-SCOPES = ['https://www.googleapis.com/auth/drive']
-SERVICE_ACCOUNT_FILE = 'credenciais.json'
-TOKEN_BOT = '7777458509:AAHfshLsxT0dyN30NeY_6zTOnUfQMWJNo58'
-ID_PLANILHA_CLIENTES = 'COLE_O_ID_DA_PLANILHA_DE_CLIENTES'
-PASTA_ESCUDOS_ID = '1KXxOkpbxWvxekEA1AgqW1ho25gXzLv4R'
-ID_IMAGEM_MATRIZ = '1JqLQ4kdDNlUtei7AFVFmKv9fj-ZvZlSc'
+# Carrega as credenciais do Railway via variável de ambiente
+service_account_info = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
+creds = service_account.Credentials.from_service_account_info(service_account_info)
 
-# === AUTENTICAÇÃO GOOGLE DRIVE & SHEETS ===
-creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-service = build('drive', 'v3', credentials=creds)
-gc = gspread.authorize(creds)
+# IDs das planilhas e intervalo da primeira operação real
+SPREADSHEET_ID = os.environ["SPREADSHEET_ID"]
+RANGE_NAME = "ENTRADA!A2:J2"  # Uma linha apenas para teste
 
-# === COLETA DE CLIENTES ATIVOS ===
-sheet = gc.open_by_key(ID_PLANILHA_CLIENTES).sheet1
-clientes = sheet.get_all_records()
-chat_ids_ativos = [str(c['CHAT_ID']) for c in clientes if c['STATUS'] == 'ATIVO' and c['PLANO'] == 'PRÓ']
+# Drive API
+drive_service = build('drive', 'v3', credentials=creds)
 
-# === DADOS DO JOGO VIA SOFASCORE + BETFAIR ===
-jogo = {
-    "time_casa": "Palmeiras",
-    "time_visitante": "Mirassol",
-    "estadio": "Allianz Parque",
-    "competicao": "Brasileirão Betano",
-    "data": "16/07/2025",
-    "hora": "19:00",
-    "mercado": "Back Palmeiras",
-    "odds": "1.43",
-    "stake": "R$ 100",
-    "liquidez": "R$ 10.793"
-}
+# Sheets API
+sheets_service = build('sheets', 'v4', credentials=creds)
+sheet = sheets_service.spreadsheets()
 
-# === DOWNLOAD DA MATRIZ OFICIAL DO DRIVE ===
-request = service.files().get_media(fileId=ID_IMAGEM_MATRIZ)
-fh = io.BytesIO()
+# Lê os dados do jogo
+result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=RANGE_NAME).execute()
+values = result.get('values', [])
+
+if not values:
+    print("Nenhum dado encontrado.")
+    exit()
+
+dados = values[0]
+(estadio, campeonato, odds, stake, mercado, liquidez, horario, resultado, time1, time2) = dados
+
+# Busca imagem da matriz no Drive
+pasta_entrada_id = os.environ["PASTA_ENTRADA_ID"]
+arquivos = drive_service.files().list(q=f"'{pasta_entrada_id}' in parents and name contains 'Matriz Entrada Back'", fields="files(id, name)").execute()
+arquivo = arquivos.get("files", [])[0]
+file_id = arquivo["id"]
+request = drive_service.files().get_media(fileId=file_id)
+fh = BytesIO()
 downloader = MediaIoBaseDownload(fh, request)
 done = False
 while not done:
     status, done = downloader.next_chunk()
+
 fh.seek(0)
-imagem_base = Image.open(fh).convert("RGBA")
+imagem = Image.open(fh)
 
-# === FUNÇÃO: BUSCA ESCUDO DO TIME PELO NOME ===
-def buscar_escudo_drive(nome_time):
-    query = f"'{PASTA_ESCUDOS_ID}' in parents and name contains '{nome_time}' and trashed = false"
-    results = service.files().list(q=query, pageSize=5, fields="files(id, name)").execute()
-    arquivos = results.get('files', [])
-    if not arquivos:
-        return None
-    file_id = arquivos[0]['id']
-    request = service.files().get_media(fileId=file_id)
-    fh = io.BytesIO()
-    downloader = MediaIoBaseDownload(fh, request)
-    done = False
-    while not done:
-        status, done = downloader.next_chunk()
-    fh.seek(0)
-    return Image.open(fh).convert("RGBA")
+# Fonte
+fonte = ImageFont.truetype("arial.ttf", 30)
+draw = ImageDraw.Draw(imagem)
 
-escudo_casa = buscar_escudo_drive(jogo["time_casa"])
-escudo_visitante = buscar_escudo_drive(jogo["time_visitante"])
+# Preenche os campos
+draw.text((380, 102), estadio, font=fonte, fill="black")
+draw.text((380, 140), campeonato, font=fonte, fill="black")
+draw.text((380, 177), odds, font=fonte, fill="black")
+draw.text((380, 215), stake, font=fonte, fill="black")
+draw.text((380, 252), mercado, font=fonte, fill="black")
+draw.text((380, 290), liquidez, font=fonte, fill="black")
+draw.text((380, 328), horario, font=fonte, fill="black")
+draw.text((380, 367), resultado, font=fonte, fill="black")
 
-# === INSERÇÃO DAS INFORMAÇÕES NA MATRIZ ===
-draw = ImageDraw.Draw(imagem_base)
-fonte_padrao = ImageFont.truetype("arial.ttf", 60)
+# Busca os escudos
+def buscar_escudo_por_nome(nome_time):
+    pasta_escudos_id = os.environ["PASTA_ESCUDOS_ID"]
+    resultado = drive_service.files().list(
+        q=f"'{pasta_escudos_id}' in parents and name contains '{nome_time}'",
+        fields="files(id, name)"
+    ).execute()
+    arquivos = resultado.get("files", [])
+    if arquivos:
+        escudo_id = arquivos[0]["id"]
+        request = drive_service.files().get_media(fileId=escudo_id)
+        escudo_fh = BytesIO()
+        downloader = MediaIoBaseDownload(escudo_fh, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        escudo_fh.seek(0)
+        return Image.open(escudo_fh).convert("RGBA")
+    return None
 
-# Estádio
-draw.text((150, 660), f"{jogo['estadio']}", fill="white", font=fonte_padrao)
+escudo1 = buscar_escudo_por_nome(time1)
+escudo2 = buscar_escudo_por_nome(time2)
 
-# Odds / Stake
-draw.text((230, 200), f"{jogo['odds']}", fill="cyan", font=fonte_padrao)
-draw.text((230, 270), f"{jogo['stake']}", fill="white", font=fonte_padrao)
+if escudo1:
+    imagem.paste(escudo1.resize((80, 80)), (105, 22), escudo1)
+if escudo2:
+    imagem.paste(escudo2.resize((80, 80)), (435, 22), escudo2)
 
-# Times
-draw.text((80, 90), f"{jogo['time_casa']} x {jogo['time_visitante']}", fill="white", font=fonte_padrao)
+# Salva imagem
+imagem_final = "/tmp/entrada_pronta.png"
+imagem.save(imagem_final)
 
-# Horário
-draw.text((80, 590), f"{jogo['data']} às {jogo['hora']}", fill="white", font=fonte_padrao)
-
-# Escudos
-if escudo_casa:
-    imagem_base.paste(escudo_casa.resize((130, 130)), (40, 420), escudo_casa.resize((130, 130)))
-if escudo_visitante:
-    imagem_base.paste(escudo_visitante.resize((130, 130)), (390, 420), escudo_visitante.resize((130, 130)))
-
-# === SALVAR IMAGEM FINAL ===
-imagem_base.save("entrada_final.png")
-
-# === ENVIO NO TELEGRAM PARA CLIENTES ATIVOS ===
-bot = Bot(token=TOKEN_BOT)
-for chat_id in chat_ids_ativos:
-    with open("entrada_final.png", "rb") as imagem:
-        bot.send_photo(chat_id=chat_id, photo=imagem, caption="🎯 Entrada Programada\nBack Palmeiras - Brasileirão")
-
+# Envia no Telegram
+bot = telegram.Bot(token=os.environ["TELEGRAM_BOT_TOKEN"])
+chat_id = os.environ["CHAT_ID"]
+bot.send_photo(chat_id=chat_id, photo=open(imagem_final, 'rb'))
