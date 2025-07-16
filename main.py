@@ -1,5 +1,6 @@
 import os
 import io
+import json
 import requests
 from PIL import Image, ImageDraw, ImageFont
 from google.oauth2 import service_account
@@ -9,9 +10,7 @@ from telegram import Bot
 # === VARIÁVEIS DE CONFIGURAÇÃO ===
 TELEGRAM_TOKEN = '7777458509:AAHfshLsxT8dyN3b1eY_6zTnOlFQwWjNo58'
 CHAT_ID = '1810082386'  # Apenas para teste
-
 DRIVE_FOLDER_ID = '1MRwEUbrJ2V99bPPowhSLGm0Uzrmj1g2f'  # Pasta ENTRADA
-SERVICE_ACCOUNT_FILE = 'credenciais.json'  # Caminho para o JSON da conta de serviço
 
 # === DADOS DE TESTE A SEREM INSERIDOS NA MATRIZ ===
 DADOS_TEXTO = {
@@ -23,13 +22,13 @@ DADOS_TEXTO = {
     'HORÁRIO': '16:00',
 }
 
-# === AUTENTICAÇÃO COM GOOGLE DRIVE ===
+# === AUTENTICAÇÃO COM GOOGLE DRIVE USANDO VARIÁVEL DO RAILWAY ===
 def autenticar_drive():
-    credenciais = service_account.Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE,
-        scopes=['https://www.googleapis.com/auth/drive']
+    creds_info = json.loads(os.environ.get("GOOGLE_CREDENTIALS_JSON"))
+    creds = service_account.Credentials.from_service_account_info(
+        creds_info, scopes=['https://www.googleapis.com/auth/drive']
     )
-    return build('drive', 'v3', credentials=credenciais)
+    return build('drive', 'v3', credentials=creds)
 
 # === BUSCA A IMAGEM NA PASTA DE ENTRADA ===
 def buscar_imagem_matriz(service):
@@ -57,7 +56,7 @@ def baixar_imagem(service, file_id):
 # === ESCREVE OS DADOS NA IMAGEM ===
 def preencher_imagem(imagem, dados):
     draw = ImageDraw.Draw(imagem)
-    font = ImageFont.truetype("arial.ttf", 28)  # Altere a fonte se necessário
+    font = ImageFont.truetype("arial.ttf", 28)  # Substitua se não estiver disponível no Railway
 
     draw.text((50, 430), f"🏟️ ESTÁDIO: {dados['ESTÁDIO']}", font=font, fill='black')
     draw.text((50, 470), f"🏆 COMPETIÇÃO: {dados['COMPETIÇÃO']}", font=font, fill='black')
@@ -78,7 +77,6 @@ def enviar_para_telegram(imagem):
 # === FLUXO PRINCIPAL ===
 def main():
     print("🚀 Iniciando robô...")
-
     try:
         service = autenticar_drive()
         file_id, nome = buscar_imagem_matriz(service)
