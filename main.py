@@ -1,121 +1,105 @@
-import os
-import io
-import requests
 import gspread
+import requests
+import json
+import io
+import os
 from PIL import Image, ImageDraw, ImageFont
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from telegram import Bot
-from datetime import datetime
 
-# ========== CONFIGURAÇÕES ==========
-GOOGLE_SHEET_CREDENTIALS = 'credentials.json'
-SPREADSHEET_CLIENTES = 'Fallah_Clientes_Oficial'
-SPREADSHEET_OPERACOES = 'Fallah_Operacoes_Oficial'
-TELEGRAM_BOT_TOKEN = 'SEU_TOKEN_TELEGRAM'
-ESCUDOS_FOLDER_ID = '1KXxOkpbxWvxekEA1AgqW1ho25gXzLv4R'
-MATRIZ_BACK_FILE_ID = '1JqLQ4kdDNlUtei7AFVFmKv9fj-ZvZlSc'
-STORAGE_DIR = 'temp_files'
+# === CONFIGURAÇÕES ===
+SCOPES = ['https://www.googleapis.com/auth/drive']
+SERVICE_ACCOUNT_FILE = 'credenciais.json'
+TOKEN_BOT = '7777458509:AAHfshLsxT0dyN30NeY_6zTOnUfQMWJNo58'
+ID_PLANILHA_CLIENTES = 'COLE_O_ID_DA_PLANILHA_DE_CLIENTES'
+PASTA_ESCUDOS_ID = '1KXxOkpbxWvxekEA1AgqW1ho25gXzLv4R'
+ID_IMAGEM_MATRIZ = '1JqLQ4kdDNlUtei7AFVFmKv9fj-ZvZlSc'
 
-# ========== FUNÇÕES AUXILIARES ==========
-def autenticar_google():
-    escopo = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    credenciais = ServiceAccountCredentials.from_json_keyfile_name(GOOGLE_SHEET_CREDENTIALS, escopo)
-    cliente = gspread.authorize(credenciais)
-    drive = build('drive', 'v3', credentials=credenciais)
-    return cliente, drive
+# === AUTENTICAÇÃO GOOGLE DRIVE & SHEETS ===
+creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+service = build('drive', 'v3', credentials=creds)
+gc = gspread.authorize(creds)
 
-def obter_clientes_ativos(cliente):
-    plan = cliente.open(SPREADSHEET_CLIENTES).sheet1
-    dados = plan.get_all_records()
-    return [linha['CHAT_ID'] for linha in dados if linha['STATUS'].strip().upper() == 'ATIVO']
+# === COLETA DE CLIENTES ATIVOS ===
+sheet = gc.open_by_key(ID_PLANILHA_CLIENTES).sheet1
+clientes = sheet.get_all_records()
+chat_ids_ativos = [str(c['CHAT_ID']) for c in clientes if c['STATUS'] == 'ATIVO' and c['PLANO'] == 'PRÓ']
 
-def baixar_arquivo_drive(drive, file_id, nome_arquivo):
-    request = drive.files().get_media(fileId=file_id)
+# === DADOS DO JOGO VIA SOFASCORE + BETFAIR ===
+jogo = {
+    "time_casa": "Palmeiras",
+    "time_visitante": "Mirassol",
+    "estadio": "Allianz Parque",
+    "competicao": "Brasileirão Betano",
+    "data": "16/07/2025",
+    "hora": "19:00",
+    "mercado": "Back Palmeiras",
+    "odds": "1.43",
+    "stake": "R$ 100",
+    "liquidez": "R$ 10.793"
+}
+
+# === DOWNLOAD DA MATRIZ OFICIAL DO DRIVE ===
+request = service.files().get_media(fileId=ID_IMAGEM_MATRIZ)
+fh = io.BytesIO()
+downloader = MediaIoBaseDownload(fh, request)
+done = False
+while not done:
+    status, done = downloader.next_chunk()
+fh.seek(0)
+imagem_base = Image.open(fh).convert("RGBA")
+
+# === FUNÇÃO: BUSCA ESCUDO DO TIME PELO NOME ===
+def buscar_escudo_drive(nome_time):
+    query = f"'{PASTA_ESCUDOS_ID}' in parents and name contains '{nome_time}' and trashed = false"
+    results = service.files().list(q=query, pageSize=5, fields="files(id, name)").execute()
+    arquivos = results.get('files', [])
+    if not arquivos:
+        return None
+    file_id = arquivos[0]['id']
+    request = service.files().get_media(fileId=file_id)
     fh = io.BytesIO()
     downloader = MediaIoBaseDownload(fh, request)
     done = False
     while not done:
-        _, done = downloader.next_chunk()
+        status, done = downloader.next_chunk()
     fh.seek(0)
-    with open(os.path.join(STORAGE_DIR, nome_arquivo), 'wb') as f:
-        f.write(fh.read())
+    return Image.open(fh).convert("RGBA")
 
-def buscar_escudo_url(time):
-    response = requests.get(f"https://api.sofascore.com/api/v1/search/multi?q={time}")
-    try:
-        resultados = response.json().get('teams', {}).get('data', [])
-        for t in resultados:
-            if time.lower() in t['name'].lower():
-                return f"https://api.sofascore.app/api/v1/team/{t['id']}/image"
-    except:
-        return None
-    return None
+escudo_casa = buscar_escudo_drive(jogo["time_casa"])
+escudo_visitante = buscar_escudo_drive(jogo["time_visitante"])
 
-def buscar_info_jogo():
-    return {
-        "estadio": "Allianz Parque",
-        "competicao": "Brasileirão Betano",
-        "horario": "19:00",
-        "mercado": "Back Palmeiras",
-        "odds": "1.42",
-        "stake": "R$100",
-        "liquidez": "R$2826",
-        "time_casa": "Palmeiras",
-        "time_visitante": "Mirassol"
-    }
+# === INSERÇÃO DAS INFORMAÇÕES NA MATRIZ ===
+draw = ImageDraw.Draw(imagem_base)
+fonte_padrao = ImageFont.truetype("arial.ttf", 60)
 
-def gerar_imagem(jogo_info, matriz_path, escudo_casa, escudo_visitante):
-    base = Image.open(matriz_path).convert("RGBA")
-    draw = ImageDraw.Draw(base)
-    fonte = ImageFont.truetype("arial.ttf", 26)
+# Estádio
+draw.text((150, 660), f"{jogo['estadio']}", fill="white", font=fonte_padrao)
 
-    draw.text((220, 350), jogo_info['estadio'], font=fonte, fill="black")
-    draw.text((220, 390), jogo_info['competicao'], font=fonte, fill="black")
-    draw.text((220, 430), jogo_info['odds'], font=fonte, fill="black")
-    draw.text((220, 470), jogo_info['stake'], font=fonte, fill="black")
-    draw.text((220, 510), jogo_info['mercado'], font=fonte, fill="black")
-    draw.text((220, 550), jogo_info['liquidez'], font=fonte, fill="black")
-    draw.text((220, 590), jogo_info['horario'], font=fonte, fill="black")
+# Odds / Stake
+draw.text((230, 200), f"{jogo['odds']}", fill="cyan", font=fonte_padrao)
+draw.text((230, 270), f"{jogo['stake']}", fill="white", font=fonte_padrao)
 
-    escudo1 = Image.open(escudo_casa).resize((70, 70))
-    escudo2 = Image.open(escudo_visitante).resize((70, 70))
-    base.paste(escudo1, (60, 200), escudo1)
-    base.paste(escudo2, (360, 200), escudo2)
+# Times
+draw.text((80, 90), f"{jogo['time_casa']} x {jogo['time_visitante']}", fill="white", font=fonte_padrao)
 
-    caminho_final = os.path.join(STORAGE_DIR, "imagem_final.png")
-    base.save(caminho_final)
-    return caminho_final
+# Horário
+draw.text((80, 590), f"{jogo['data']} às {jogo['hora']}", fill="white", font=fonte_padrao)
 
-def enviar_imagem(bot_token, chat_id, caminho_imagem):
-    bot = Bot(token=bot_token)
-    with open(caminho_imagem, "rb") as f:
-        bot.send_photo(chat_id=chat_id, photo=f)
+# Escudos
+if escudo_casa:
+    imagem_base.paste(escudo_casa.resize((130, 130)), (40, 420), escudo_casa.resize((130, 130)))
+if escudo_visitante:
+    imagem_base.paste(escudo_visitante.resize((130, 130)), (390, 420), escudo_visitante.resize((130, 130)))
 
-# ========== EXECUÇÃO PRINCIPAL ==========
-if __name__ == "__main__":
-    os.makedirs(STORAGE_DIR, exist_ok=True)
-    cliente, drive = autenticar_google()
-    clientes_ativos = obter_clientes_ativos(cliente)
+# === SALVAR IMAGEM FINAL ===
+imagem_base.save("entrada_final.png")
 
-    jogo = buscar_info_jogo()
-    baixar_arquivo_drive(drive, MATRIZ_BACK_FILE_ID, "matriz.png")
+# === ENVIO NO TELEGRAM PARA CLIENTES ATIVOS ===
+bot = Bot(token=TOKEN_BOT)
+for chat_id in chat_ids_ativos:
+    with open("entrada_final.png", "rb") as imagem:
+        bot.send_photo(chat_id=chat_id, photo=imagem, caption="🎯 Entrada Programada\nBack Palmeiras - Brasileirão")
 
-    url_escudo_casa = buscar_escudo_url(jogo['time_casa'])
-    url_escudo_visitante = buscar_escudo_url(jogo['time_visitante'])
-
-    escudo_caminho1 = os.path.join(STORAGE_DIR, "casa.png")
-    escudo_caminho2 = os.path.join(STORAGE_DIR, "visitante.png")
-
-    with open(escudo_caminho1, 'wb') as f:
-        f.write(requests.get(url_escudo_casa).content)
-    with open(escudo_caminho2, 'wb') as f:
-        f.write(requests.get(url_escudo_visitante).content)
-
-    imagem = gerar_imagem(jogo, os.path.join(STORAGE_DIR, "matriz.png"), escudo_caminho1, escudo_caminho2)
-
-    for chat_id in clientes_ativos:
-        enviar_imagem(TELEGRAM_BOT_TOKEN, chat_id, imagem)
-
-    print("Imagem gerada e enviada com sucesso.")
