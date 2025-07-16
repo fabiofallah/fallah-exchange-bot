@@ -11,16 +11,25 @@ import json
 TELEGRAM_TOKEN = '7777458509:AAHfshLsxT8dyN3b1eY_6zTnOlFQwWjNo58'
 CHAT_ID = '1810082386'  # Apenas para teste
 
-# ID da pasta correta no Drive
-DRIVE_FOLDER_ID = '1MRwEUbr3UVZ99BWPpohM5LhGOmU7Mgiz'
+# Lê as credenciais do Railway
+GOOGLE_CREDENTIALS_JSON = json.loads(os.environ['GOOGLE_CREDENTIALS_JSON'])
 
-# Credenciais do Google (vindo das variáveis do Railway)
-GOOGLE_CREDENTIALS = json.loads(os.environ.get("GOOGLE_CREDENTIALS_JSON"))
+DRIVE_FOLDER_ID = '1MRwEUbr3UVZ99BWPpohM5LhGOmU7Mgiz'  # Pasta ENTRADA
+
+# === DADOS DE TESTE A SEREM INSERIDOS NA MATRIZ ===
+DADOS_TEXTO = {
+    'ESTÁDIO': 'Maracanã',
+    'COMPETIÇÃO': 'Brasileirão Série A',
+    'ODDS': '1.90',
+    'TIME CASA': 'Fluminense',
+    'TIME VISITANTE': 'Flamengo',
+    'HORÁRIO': '16:00',
+}
 
 # === AUTENTICAÇÃO COM GOOGLE DRIVE ===
 def autenticar_drive():
     credenciais = service_account.Credentials.from_service_account_info(
-        GOOGLE_CREDENTIALS,
+        GOOGLE_CREDENTIALS_JSON,
         scopes=['https://www.googleapis.com/auth/drive']
     )
     return build('drive', 'v3', credentials=credenciais)
@@ -29,8 +38,7 @@ def autenticar_drive():
 def buscar_imagem_matriz(service):
     resultados = service.files().list(
         q=f"'{DRIVE_FOLDER_ID}' in parents and mimeType='image/png'",
-        fields="files(id, name)",
-        pageSize=1
+        fields="files(id, name)"
     ).execute()
     arquivos = resultados.get('files', [])
     if not arquivos:
@@ -39,7 +47,6 @@ def buscar_imagem_matriz(service):
 
 # === FAZ O DOWNLOAD DA IMAGEM PARA MEMÓRIA ===
 def baixar_imagem(service, file_id):
-    request = service.files().get_media(fileId=file_id)
     buffer = io.BytesIO()
     downloader = requests.get(
         f'https://www.googleapis.com/drive/v3/files/{file_id}?alt=media',
@@ -52,7 +59,9 @@ def baixar_imagem(service, file_id):
 # === ESCREVE OS DADOS NA IMAGEM ===
 def preencher_imagem(imagem, dados):
     draw = ImageDraw.Draw(imagem)
-    font = ImageFont.truetype("arial.ttf", 28)  # Altere se necessário
+    
+    # Usa uma fonte genérica compatível com Railway
+    font = ImageFont.load_default()
 
     draw.text((50, 430), f"🏟️ ESTÁDIO: {dados['ESTÁDIO']}", font=font, fill='black')
     draw.text((50, 470), f"🏆 COMPETIÇÃO: {dados['COMPETIÇÃO']}", font=font, fill='black')
@@ -69,16 +78,6 @@ def enviar_para_telegram(imagem):
     imagem.save(buffer, format='PNG')
     buffer.seek(0)
     bot.send_photo(chat_id=CHAT_ID, photo=buffer, caption="✅ Entrada gerada automaticamente")
-
-# === DADOS DE TESTE A SEREM INSERIDOS NA MATRIZ ===
-DADOS_TEXTO = {
-    'ESTÁDIO': 'Maracanã',
-    'COMPETIÇÃO': 'Brasileirão Série A',
-    'ODDS': '1.90',
-    'TIME CASA': 'Fluminense',
-    'TIME VISITANTE': 'Flamengo',
-    'HORÁRIO': '16:00',
-}
 
 # === FLUXO PRINCIPAL ===
 def main():
