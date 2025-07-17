@@ -1,97 +1,85 @@
 import os
 import io
-import json
+import gspread
 import requests
 from PIL import Image, ImageDraw, ImageFont
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
+from google.oauth2.service_account import Credentials
 from telegram import Bot
 
-# === VARIÁVEIS DE AMBIENTE ===
-TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
-CHAT_ID = os.environ['CHAT_ID']
-DRIVE_FOLDER_ID = os.environ['DRIVE_FOLDER_ID']
+# === Carregar variáveis do Railway ===
+google_credentials_json = os.environ['GOOGLE_CREDENTIALS_JSON']
+spreadsheet_id = os.environ['SPREADSHEET_ID']
+telegram_token = os.environ['TELEGRAM_BOT_TOKEN']
+chat_id = os.environ['TELEGRAM_CHAT_ID']
+pasta_entrada_id = os.environ['PASTA_ENTRADA_ID']
 
-# === DADOS DA MATRIZ ===
-DADOS_TEXTO = {
-    'ESTÁDIO': 'Maracanã',
-    'COMPETIÇÃO': 'Brasileirão Série A',
-    'ODDS': '1.90',
-    'STAKE': 'R$100',
-    'MERCADO': 'Back FT',
-    'LIQUIDEZ': 'Alta',
-    'HORÁRIO': '16:00',
-    'RESULTADO': '',
-}
+# === Autenticar com Google Sheets ===
+import json
+creds_dict = json.loads(google_credentials_json)
+scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+client = gspread.authorize(creds)
 
-# === AUTENTICAÇÃO COM GOOGLE DRIVE ===
-def autenticar_drive():
-    info = json.loads(os.environ['GOOGLE_CREDENTIALS_JSON'])
-    credenciais = service_account.Credentials.from_service_account_info(
-        info, scopes=['https://www.googleapis.com/auth/drive']
-    )
-    return build('drive', 'v3', credentials=credenciais)
+# === Ler dados da planilha ===
+sheet = client.open_by_key(spreadsheet_id)
+worksheet = sheet.get_worksheet(0)
+dados = worksheet.get_all_records()
 
-# === BUSCA A IMAGEM NA PASTA ===
-def buscar_imagem_matriz(service):
-    resultados = service.files().list(
-        q=f"'{DRIVE_FOLDER_ID}' in parents and mimeType='image/png'",
-        fields="files(id, name)"
-    ).execute()
-    arquivos = resultados.get('files', [])
-    if not arquivos:
-        raise Exception("Nenhuma imagem PNG encontrada na pasta ENTRADA.")
-    return arquivos[0]['id'], arquivos[0]['name']
+# === Pegar o último jogo preenchido ===
+ultimo_jogo = dados[-1]
 
-# === DOWNLOAD DA IMAGEM ===
-def baixar_imagem(service, file_id):
-    buffer = io.BytesIO()
-    resposta = requests.get(
-        f'https://www.googleapis.com/drive/v3/files/{file_id}?alt=media',
-        headers={"Authorization": f"Bearer {service._http.credentials.token}"}
-    )
-    buffer.write(resposta.content)
-    buffer.seek(0)
-    return Image.open(buffer).convert('RGB')
+# === Buscar imagem base da pasta do Drive ===
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
 
-# === ESCREVE OS DADOS NA IMAGEM ===
-def preencher_imagem(imagem, dados):
-    draw = ImageDraw.Draw(imagem)
-    font = ImageFont.load_default()
+service = build('drive', 'v3', credentials=creds)
 
-    draw.text((60, 430), f"🏟️ ESTÁDIO : {dados['ESTÁDIO']}", font=font, fill='black')
-    draw.text((60, 460), f"🏆 COMPETIÇÃO : {dados['COMPETIÇÃO']}", font=font, fill='black')
-    draw.text((60, 490), f"💸 ODDS : {dados['ODDS']}", font=font, fill='black')
-    draw.text((60, 520), f"📌 STAKE : {dados['STAKE']}", font=font, fill='black')
-    draw.text((60, 550), f"📊 MERCADO : {dados['MERCADO']}", font=font, fill='black')
-    draw.text((60, 580), f"💧 LIQUIDEZ : {dados['LIQUIDEZ']}", font=font, fill='black')
-    draw.text((60, 610), f"🕒 HORÁRIO : {dados['HORÁRIO']}", font=font, fill='black')
-    draw.text((60, 640), f"✅ RESULTADO : {dados['RESULTADO']}", font=font, fill='black')
+# Procurar imagem .png na pasta de entrada
+results = service.files().list(
+    q=f"'{pasta_entrada_id}' in parents and mimeType='image/png'",
+    pageSize=1,
+    orderBy="createdTime desc",
+    fields="files(id, name)"
+).execute()
 
-    return imagem
+items = results.get('files', [])
+if not items:
+    raise Exception("Nenhuma imagem PNG encontrada na pasta de entrada.")
 
-# === ENVIA A IMAGEM VIA TELEGRAM ===
-def enviar_para_telegram(imagem):
-    bot = Bot(token=TELEGRAM_TOKEN)
-    buffer = io.BytesIO()
-    imagem.save(buffer, format='PNG')
-    buffer.seek(0)
-    bot.send_photo(chat_id=CHAT_ID, photo=buffer, caption="✅ Entrada gerada automaticamente")
+file_id = items[0]['id']
+file_name = items[0]['name']
 
-# === EXECUÇÃO ===
-def main():
-    print("🚀 Iniciando robô...")
+# Baixar imagem da matriz
+request = service.files().get_media(fileId=file_id)
+fh = io.BytesIO()
+downloader = MediaIoBaseDownload(fh, request)
+done = False
+while not done:
+    status, done = downloader.next_chunk()
+fh.seek(0)
+image = Image.open(fh).convert("RGBA")
 
-    try:
-        service = autenticar_drive()
-        file_id, nome = buscar_imagem_matriz(service)
-        print(f"🖼️ Imagem encontrada: {nome}")
-        imagem = baixar_imagem(service, file_id)
-        imagem_editada = preencher_imagem(imagem, DADOS_TEXTO)
-        enviar_para_telegram(imagem_editada)
-        print("✅ Entrada enviada com sucesso!")
-    except Exception as e:
-        print(f"❌ Erro durante a execução: {e}")
+# === Editar a imagem com os dados da planilha ===
+draw = ImageDraw.Draw(image)
+fonte_padrao = ImageFont.truetype("arial.ttf", size=32)  # você pode trocar para uma fonte custom se preferir
 
-if __name__ == '__main__':
-    main()
+# Posicionar os campos conforme sua matriz visual
+draw.text((100, 230), str(ultimo_jogo["ESTÁDIO"]), fill="black", font=fonte_padrao)
+draw.text((100, 300), str(ultimo_jogo["COMPETIÇÃO"]), fill="black", font=fonte_padrao)
+draw.text((100, 370), str(ultimo_jogo["ODDS"]), fill="black", font=fonte_padrao)
+draw.text((100, 440), str(ultimo_jogo["STAKE"]), fill="black", font=fonte_padrao)
+draw.text((100, 510), str(ultimo_jogo["MERCADO"]), fill="black", font=fonte_padrao)
+draw.text((100, 580), str(ultimo_jogo["LIQUIDEZ"]), fill="black", font=fonte_padrao)
+draw.text((100, 650), str(ultimo_jogo["HORÁRIO"]), fill="black", font=fonte_padrao)
+draw.text((100, 720), str(ultimo_jogo["RESULTADO"]), fill="black", font=fonte_padrao)
+
+# === Salvar imagem temporária ===
+caminho_imagem_editada = "imagem_entrada.png"
+image.save(caminho_imagem_editada)
+
+# === Enviar imagem via Telegram ===
+bot = Bot(token=telegram_token)
+with open(caminho_imagem_editada, "rb") as f:
+    bot.send_photo(chat_id=chat_id, photo=f, caption="✅ Entrada gerada com sucesso!")
+
+print("Imagem enviada com sucesso.")
