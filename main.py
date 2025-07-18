@@ -1,53 +1,75 @@
 import os
+import logging
 import json
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-from telegram import Bot
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 from io import BytesIO
-import requests  # para fallback URL
+from telegram import Bot
+from telegram.ext import Updater, CommandHandler
+from google.oauth2.service_account import Credentials
+import gspread
+from PIL import Image
 
-# Carrega variáveis
-TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
-CHAT_ID = os.environ['TELEGRAM_CHAT_ID']
-CREDS_JSON = os.environ['GOOGLE_CREDENTIALS_JSON']
-SPREADSHEET_ID = os.environ['SPREADSHEET_ID']
-DRIVE_FOLDER_ID = os.environ['PASTA_ENTRADA_ID']
+# Log
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Autenticação gspread
-scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(CREDS_JSON), scope)
+# Variáveis de ambiente obrigatórias
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+GOOGLE_CREDENTIALS = os.getenv('GOOGLE_CREDENTIALS_JSON')
+SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
+FOLDER_ENTRADA_ID = os.getenv('PASTA_ENTRADA_ID')
+
+# Verificações iniciais
+required = {
+    'TELEGRAM_BOT_TOKEN': TELEGRAM_TOKEN,
+    'TELEGRAM_CHAT_ID': TELEGRAM_CHAT_ID,
+    'GOOGLE_CREDENTIALS_JSON': GOOGLE_CREDENTIALS,
+    'SPREADSHEET_ID': SPREADSHEET_ID,
+    'PASTA_ENTRADA_ID': FOLDER_ENTRADA_ID
+}
+for name, val in required.items():
+    if not val:
+        logger.error(f"⚠️ Variável obrigatória ausente: {name}")
+        raise SystemExit(f"Erro: falta {name}")
+
+# Conexão com Google Sheets/Drive
+creds_info = json.loads(GOOGLE_CREDENTIALS)
+scopes = ["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/spreadsheets"]
+creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
 gc = gspread.authorize(creds)
 
-# Serviço Drive API
-drive = build('drive', 'v3', credentials=creds)
-
-bot = Bot(token=TOKEN)
+# Conexão com Telegram
+bot = Bot(token=TELEGRAM_TOKEN)
 
 def buscar_entrada():
     sheet = gc.open_by_key(SPREADSHEET_ID).worksheet('Fallah_Clientes_Oficial')
-    return sheet.get_all_values()
+    # Supondo colunas fixas na mesma ordem do print:
+    # A: CPF_ROBOTICO, B: NOME, C: CHAT_ID, D: STATUS, E: PLANO, F: DATA_INICIO, G: DATA_FIM, H: OBSERVACOES
+    rows = sheet.get_all_records()
+    return rows
 
-def puxar_imagem():
-    try:
-        resp = drive.files().list(q=f"'{DRIVE_FOLDER_ID}' in parents and mimeType contains 'image/'",
-                                  orderBy='createdTime desc', pageSize=1).execute()
-        file = resp['files'][0]
-        dl = drive.files().get_media(fileId=file['id']).execute()
-        return BytesIO(dl), file['name']
-    except (IndexError, HttpError) as e:
-        print("Erro imagem:", e)
-        return None, None
+def enviar_mensagem(dados):
+    for item in dados:
+        chat_id = item.get('CHAT_ID')
+        if not chat_id:
+            continue
+        texto = (
+            f"*Oferta encontrada!*\n"
+            f"Cliente: {item['NOME']}\n"
+            f"Plano: {item['PLANO']}\n"
+            f"Status: {item['STATUS']}\n"
+            f"Início/Fim: {item['DATA_INICIO']} → {item['DATA_FIM']}"
+        )
+        bot.send_message(chat_id=chat_id, text=texto, parse_mode='Markdown')
 
 def main():
+    logger.info("🔄 Iniciando consulta de entradas...")
     dados = buscar_entrada()
-    img_buffer, name = puxar_imagem()
-    if img_buffer:
-        bot.send_photo(chat_id=CHAT_ID, photo=img_buffer, caption="✅ Entrada automática")
+    if not dados:
+        logger.info("Nenhuma entrada encontrada.")
     else:
-        bot.send_message(chat_id=CHAT_ID, text="⚠️ Sem imagem encontrada.")
-    print("Envio concluído.")
+        enviar_mensagem(dados)
+        logger.info(f"{len(dados)} mensagens enviadas.")
 
 if __name__ == '__main__':
     main()
