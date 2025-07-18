@@ -1,8 +1,4 @@
-gspread==6.2.1
-oauth2client==4.1.3
-python-telegram-bot==22.2
-Pillow==10.2.0
-google-auth==2.29.0
-google-auth-oauthlib==1.2.0
-google-api-python-client==2.125.0
-schedule==1.2.2
+gspread>=6.2.1
+oauth2client>=4.1.3
+python-telegram-bot>=22.2
+schedule>=1.2.2
