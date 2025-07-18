@@ -27,26 +27,36 @@ required = {
     'SPREADSHEET_ID': SPREADSHEET_ID,
     'PASTA_ENTRADA_ID': FOLDER_ENTRADA_ID
 }
+
 for name, val in required.items():
     if not val:
-        logger.error(f"⚠️ Variável obrigatória ausente: {name}")
+        logger.error(f"A variável obrigatória ausente: {name}")
         raise SystemExit(f"Erro: falta {name}")
 
 # Conexão com Google Sheets/Drive
-creds_info = json.loads(GOOGLE_CREDENTIALS)
-scopes = ["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/spreadsheets"]
-creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
-gc = gspread.authorize(creds)
+try:
+    creds_info = json.loads(GOOGLE_CREDENTIALS)
+    scopes = [
+        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/spreadsheets"
+    ]
+    creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
+    gc = gspread.authorize(creds)
+except Exception as e:
+    logger.error("Erro ao autenticar com o Google: %s", e)
+    raise
 
 # Conexão com Telegram
 bot = Bot(token=TELEGRAM_TOKEN)
 
 def buscar_entrada():
-    sheet = gc.open_by_key(SPREADSHEET_ID).worksheet('Fallah_Clientes_Oficial')
-    # Supondo colunas fixas na mesma ordem do print:
-    # A: CPF_ROBOTICO, B: NOME, C: CHAT_ID, D: STATUS, E: PLANO, F: DATA_INICIO, G: DATA_FIM, H: OBSERVACOES
-    rows = sheet.get_all_records()
-    return rows
+    try:
+        sheet = gc.open_by_key(SPREADSHEET_ID).worksheet('Fallah_Clientes_Oficial')
+        rows = sheet.get_all_records()
+        return rows
+    except Exception as e:
+        logger.error("Erro ao buscar dados da planilha: %s", e)
+        return []
 
 def enviar_mensagem(dados):
     for item in dados:
@@ -55,15 +65,15 @@ def enviar_mensagem(dados):
             continue
         texto = (
             f"*Oferta encontrada!*\n"
-            f"Cliente: {item['NOME']}\n"
-            f"Plano: {item['PLANO']}\n"
-            f"Status: {item['STATUS']}\n"
-            f"Início/Fim: {item['DATA_INICIO']} → {item['DATA_FIM']}"
+            f"*Cliente:* {item['NOME']}\n"
+            f"*Plano:* {item['PLANO']}\n"
+            f"*Status:* {item['STATUS']}\n"
+            f"*Início/Fim:* {item['DATA_INICIO']} → {item['DATA_FIM']}"
         )
         bot.send_message(chat_id=chat_id, text=texto, parse_mode='Markdown')
 
 def main():
-    logger.info("🔄 Iniciando consulta de entradas...")
+    logger.info("📥 Iniciando consulta de entradas...")
     dados = buscar_entrada()
     if not dados:
         logger.info("Nenhuma entrada encontrada.")
