@@ -14,22 +14,22 @@ logger = logging.getLogger(__name__)
 # Variáveis de ambiente
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-GOOGLE_CREDS_JSON = os.getenv('GOOGLE_CREDENTIALS_JSON')
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
 
-# Validação
-for name, val in [
-    ('TELEGRAM_BOT_TOKEN', TELEGRAM_TOKEN),
-    ('TELEGRAM_CHAT_ID', TELEGRAM_CHAT_ID),
-    ('GOOGLE_CREDENTIALS_JSON', GOOGLE_CREDS_JSON),
-    ('SPREADSHEET_ID', SPREADSHEET_ID)
-]:
-    if not val:
-        logger.error(f"❌ Variável obrigatória ausente: {name}")
-        raise SystemExit(f"Erro: falta {name}")
+# 🔧 Corrige erros comuns de formatação do JSON vindo de variável
+def parse_google_json_env():
+    raw_json = os.getenv('GOOGLE_CREDENTIALS_JSON')
+    if not raw_json:
+        raise SystemExit("❌ GOOGLE_CREDENTIALS_JSON está vazio!")
+    try:
+        return json.loads(raw_json)
+    except json.JSONDecodeError:
+        # Tenta substituir aspas escapadas mal formatadas
+        fixed_json = raw_json.replace("\\n", "\n").replace('\\"', '"')
+        return json.loads(fixed_json)
 
 # Autenticação Google Sheets
-creds_dict = json.loads(GOOGLE_CREDS_JSON)
+creds_dict = parse_google_json_env()
 scopes = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive'
@@ -37,12 +37,12 @@ scopes = [
 creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 gc = gspread.authorize(creds)
 
-# Telegram bot
+# Bot do Telegram
 bot = Bot(token=TELEGRAM_TOKEN)
 
 def check_entries():
     try:
-        # 🟢 Acessando a PRIMEIRA aba da planilha diretamente
+        # ✅ Pega a primeira aba (CPF_ROBOTICO) diretamente
         sheet = gc.open_by_key(SPREADSHEET_ID).get_worksheet(0)
         rows = sheet.get_all_records()
         return rows
