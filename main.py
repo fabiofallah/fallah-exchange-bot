@@ -1,7 +1,7 @@
 import os
 import json
 import gspread
-from telegram import Bot
+from telegram.bot import Bot  # <- Importa a versão síncrona
 from oauth2client.service_account import ServiceAccountCredentials
 
 # Variáveis de ambiente
@@ -20,15 +20,12 @@ try:
     spreadsheet = gc.open_by_key(SPREADSHEET_ID)
     print("✅ Planilha encontrada!")
 
-    # Seleciona automaticamente a primeira aba
     worksheet = spreadsheet.get_worksheet(0)
     print(f"✅ Aba '{worksheet.title}' acessada com sucesso!")
 
-    # Leitura dos dados
     data = worksheet.get_all_records()
     print(f"📋 Registros encontrados: {len(data)}")
 
-    # Enviar mensagem ao primeiro cliente (exemplo)
     if data:
         first_user = data[0]
         chat_id = str(first_user['CHAT_ID']).strip()
