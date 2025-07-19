@@ -7,6 +7,7 @@ def parse_google_json_env():
     raw_json = os.getenv('GOOGLE_CREDENTIALS_JSON')
     if not raw_json:
         raise SystemExit("❌ GOOGLE_CREDENTIALS_JSON está vazio!")
+
     try:
         return json.loads(raw_json)
     except json.JSONDecodeError:
@@ -25,12 +26,9 @@ gc = gspread.authorize(creds)
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
 
 try:
-    print("🔎 Acessando planilha...")
-    sheet = gc.open_by_key(SPREADSHEET_ID)
+    print("📘 Acessando planilha...")
+    sheet = gc.open_by_key(SPREADSHEET_ID).worksheet("CPF_ROBOTICO")  # ABA CORRETA AQUI
     print("✅ Planilha encontrada!")
-    print("📄 Título:", sheet.title)
-    print("📑 Abas disponíveis:")
-    for ws in sheet.worksheets():
-        print(" -", ws.title)
+    print(f"📄 Título: {sheet.title}")
 except Exception as e:
-    print("❌ Erro ao acessar a planilha:", e)
+    print(f"❌ Erro ao acessar a planilha: {e}")
