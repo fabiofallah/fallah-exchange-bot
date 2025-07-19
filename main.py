@@ -1,45 +1,43 @@
 import os
 import json
 import gspread
-from google.oauth2.service_account import Credentials
+import telegram
+from oauth2client.service_account import ServiceAccountCredentials
 
-# Função para extrair credenciais do ambiente (Railway)
-def parse_google_json_env():
-    raw_json = os.getenv('GOOGLE_CREDENTIALS_JSON')
-    if not raw_json:
-        raise SystemExit("❌ GOOGLE_CREDENTIALS_JSON está vazio!")
+# Variáveis de ambiente
+GOOGLE_CREDENTIALS_JSON = json.loads(os.environ['GOOGLE_CREDENTIALS_JSON'])
+SPREADSHEET_ID = os.environ['SPREADSHEET_ID']
+TELEGRAM_BOT_TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
+TELEGRAM_CHAT_ID = os.environ['TELEGRAM_CHAT_ID']
 
-    try:
-        return json.loads(raw_json)
-    except json.JSONDecodeError:
-        fixed_json = raw_json.replace("\\n", "\n").replace('\\"', '"')
-        return json.loads(fixed_json)
-
-# Autenticação
-creds_dict = parse_google_json_env()
-scopes = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
-creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-gc = gspread.authorize(creds)
-
-# ID da planilha
-SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
+# Autenticar com Google Sheets
+scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+credentials = ServiceAccountCredentials.from_json_keyfile_dict(GOOGLE_CREDENTIALS_JSON, scope)
+gc = gspread.authorize(credentials)
 
 try:
-    print("🔄 Acessando planilha...")
-    sheet = gc.open_by_key(SPREADSHEET_ID)
+    print("📂 Acessando planilha...")
+    spreadsheet = gc.open_by_key(SPREADSHEET_ID)
     print("✅ Planilha encontrada!")
 
-    worksheet = sheet.worksheet("CPF_ROBOTICO")
-    print(f"📄 Aba ativa: {worksheet.title}")
+    # Corrigido: nome da aba precisa ser exatamente CPF_ROBOTICO
+    worksheet = spreadsheet.worksheet("CPF_ROBOTICO")
+    print("✅ Aba CPF_ROBOTICO acessada com sucesso!")
 
-    # Exemplo de leitura:
-    data = worksheet.get_all_values()
-    print("📊 Dados da aba:")
-    for row in data:
-        print(row)
+    # Leitura dos dados da planilha
+    data = worksheet.get_all_records()
+    print("📊 Registros encontrados:", len(data))
+
+    # Enviar mensagem de boas-vindas ao primeiro cliente (exemplo)
+    if data:
+        first_user = data[0]
+        chat_id = str(first_user['CHAT_ID']).strip()
+        nome = first_user['NOME']
+
+        bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
+        mensagem = f"Olá {nome}, você está conectado ao Robô Fallah Oficial com sucesso! 🤖✅"
+        bot.send_message(chat_id=chat_id, text=mensagem)
+        print(f"📨 Mensagem enviada para {nome} ({chat_id})")
 
 except Exception as e:
-    print(f"❌ Erro ao acessar a planilha: {e}")
+    print("❌ Erro ao acessar a planilha:", e)
