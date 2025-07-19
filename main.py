@@ -16,6 +16,7 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 GOOGLE_CREDS_JSON = os.getenv('GOOGLE_CREDENTIALS_JSON')
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
+WORKSHEET_NAME = 'CPF_ROBOTICO'  # ✅ Nome correto da aba no Google Sheets
 
 # Validação das variáveis
 for name, val in [
@@ -42,7 +43,7 @@ bot = Bot(token=TELEGRAM_TOKEN)
 
 def check_entries():
     try:
-        sheet = gc.open_by_key(SPREADSHEET_ID).worksheet('Fallah_Clientes_Oficial')
+        sheet = gc.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME)
         rows = sheet.get_all_records()
         return rows
     except Exception as e:
@@ -54,13 +55,15 @@ def send_messages(entries):
         chat_id = item.get('CHAT_ID')
         if not chat_id:
             continue
+
         texto = (
-            f"*Oferta encontrada!*\n"
-            f"Cliente: {item.get('NOME')}\n"
-            f"Plano: {item.get('PLANO')}\n"
-            f"Status: {item.get('STATUS')}\n"
-            f"Início/Fim: {item.get('DATA_INICIO')} → {item.get('DATA_FIM')}"
+            f"✅ *Oferta encontrada!*\n"
+            f"*Cliente:* {item.get('NOME')}\n"
+            f"*Plano:* {item.get('PLANO')}\n"
+            f"*Status:* {item.get('STATUS')}\n"
+            f"*Início/Fim:* {item.get('DATA_INICIO')} ➜ {item.get('DATA_FIM')}"
         )
+
         bot.send_message(chat_id=chat_id, text=texto, parse_mode='Markdown')
 
 def job():
@@ -68,13 +71,13 @@ def job():
     entries = check_entries()
     if entries:
         send_messages(entries)
-        logger.info(f"{len(entries)} mensagens enviadas.")
+        logger.info(f"✅ {len(entries)} mensagens enviadas.")
     else:
-        logger.info("Nenhuma entrada encontrada.")
+        logger.info("ℹ️ Nenhuma entrada encontrada.")
 
 def main():
     schedule.every(1).minutes.do(job)
-    logger.info("Scheduler iniciado. Executando a cada 1 min.")
+    logger.info("🕒 Scheduler iniciado. Executando a cada 1 min.")
     while True:
         schedule.run_pending()
         time.sleep(1)
