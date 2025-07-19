@@ -16,7 +16,7 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 GOOGLE_CREDS_JSON = os.getenv('GOOGLE_CREDENTIALS_JSON')
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
-WORKSHEET_NAME = 'CPF_ROBOTICO'  # ✅ Nome correto da aba no Google Sheets
+WORKSHEET_NAME = 'CPF_ROBOTICO'  # ✅ Nome correto da aba
 
 # Validação das variáveis
 for name, val in [
